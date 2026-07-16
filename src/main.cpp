@@ -774,6 +774,52 @@ void setupLogger(bool enableLog, std::string customPath) {
     Logger::setEnabled(true);
 }
 
+Config loadAppConfig(const std::string& configFile, bool langOverride, std::string& langSource) {
+    Config config;
+    std::string loadFile = configFile;
+    const char* home = getenv("HOME");
+    if (home) {
+        std::string userConf = std::string(home) + "/.aethercli/config.json";
+        if (fs::exists(userConf)) loadFile = userConf;
+    }
+
+    if (!fs::exists(loadFile)) {
+        std::cerr << "% Warning: configuration file not found: " << loadFile << std::endl;
+        std::cerr << "% Starting with an empty command set. Use -C <file> to load a configuration." << std::endl;
+    } else {
+        config = CommandParser::parseConfig(loadFile);
+        if (!langOverride && !config.language.empty()) {
+            langSource = config.language;
+        }
+
+        if (home) {
+            std::string userDir = std::string(home) + "/.aethercli";
+            std::ifstream lfile(userDir + "/language");
+            if (lfile.is_open()) {
+                std::string l;
+                if (lfile >> l && !l.empty()) {
+                    langSource = l;
+                }
+            }
+            std::ifstream sfile(userDir + "/statusbar");
+            if (sfile.is_open()) {
+                std::string s;
+                if (sfile >> s) {
+                    config.status_bar = (s == "true");
+                }
+            }
+            std::ifstream afile(userDir + "/authentication");
+            if (afile.is_open()) {
+                std::string a;
+                if (afile >> a) {
+                    config.require_authentication = (a == "true");
+                }
+            }
+        }
+    }
+    return config;
+}
+
 int main(int argc, char* argv[]) {
     std::string langSource = "en", configFile = AETHERCLI_CONFIG, target = "";
     bool headless = false, enableLog = false;
@@ -827,52 +873,11 @@ int main(int argc, char* argv[]) {
     }
 
     Config config;
-    std::string loadFile = configFile;
-    const char* home = getenv("HOME");
-    if (home) {
-        std::string userConf = std::string(home) + "/.aethercli/config.json";
-        if (fs::exists(userConf)) loadFile = userConf;
-    }
-
-    if (!fs::exists(loadFile)) {
-        std::cerr << "% Warning: configuration file not found: " << loadFile << std::endl;
-        std::cerr << "% Starting with an empty command set. Use -C <file> to load a configuration." << std::endl;
-    } else {
-        try {
-            config = CommandParser::parseConfig(loadFile);
-            if (!langOverride && !config.language.empty()) {
-                langSource = config.language;
-            }
-
-            const char* home = getenv("HOME");
-            if (home) {
-                std::string userDir = std::string(home) + "/.aethercli";
-                std::ifstream lfile(userDir + "/language");
-                if (lfile.is_open()) {
-                    std::string l;
-                    if (lfile >> l && !l.empty()) {
-                        langSource = l;
-                    }
-                }
-                std::ifstream sfile(userDir + "/statusbar");
-                if (sfile.is_open()) {
-                    std::string s;
-                    if (sfile >> s) {
-                        config.status_bar = (s == "true");
-                    }
-                }
-                std::ifstream afile(userDir + "/authentication");
-                if (afile.is_open()) {
-                    std::string a;
-                    if (afile >> a) {
-                        config.require_authentication = (a == "true");
-                    }
-                }
-            }
-        } catch (const std::exception& e) {
-            std::cerr << e.what() << std::endl;
-            return 1;
-        }
+    try {
+        config = loadAppConfig(configFile, langOverride, langSource);
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
+        return 1;
     }
 
     setenv("AETHERCLI_LANG", langSource.c_str(), 1);
@@ -964,41 +969,7 @@ int main(int argc, char* argv[]) {
                     break; // Sai do loop se runInteractive retornar normalmente (exit)
                 } catch (const ReloadException&) {
                     try {
-                        std::string rLoadFile = configFile;
-                        const char* rHome = getenv("HOME");
-                        if (rHome) {
-                            std::string userConf = std::string(rHome) + "/.aethercli/config.json";
-                            if (fs::exists(userConf)) rLoadFile = userConf;
-                        }
-                        config = CommandParser::parseConfig(rLoadFile);
-                        if (!langOverride && !config.language.empty()) {
-                            langSource = config.language;
-                        }
-                        const char* home = getenv("HOME");
-                        if (home) {
-                            std::string userDir = std::string(home) + "/.aethercli";
-                            std::ifstream lfile(userDir + "/language");
-                            if (lfile.is_open()) {
-                                std::string l;
-                                if (lfile >> l && !l.empty()) {
-                                    langSource = l;
-                                }
-                            }
-                            std::ifstream sfile(userDir + "/statusbar");
-                            if (sfile.is_open()) {
-                                std::string s;
-                                if (sfile >> s) {
-                                    config.status_bar = (s == "true");
-                                }
-                            }
-                            std::ifstream afile(userDir + "/authentication");
-                            if (afile.is_open()) {
-                                std::string a;
-                                if (afile >> a) {
-                                    config.require_authentication = (a == "true");
-                                }
-                            }
-                        }
+                        config = loadAppConfig(configFile, langOverride, langSource);
                         setenv("AETHERCLI_LANG", langSource.c_str(), 1);
 
                         std::string actualScriptsDir = config.scripts_dir;
