@@ -881,6 +881,7 @@ int main(int argc, char* argv[]) {
     }
 
     setenv("AETHERCLI_LANG", langSource.c_str(), 1);
+    setenv("AETHERCLI_USER", g_current_user.c_str(), 1);
 
     try {
         std::string configDir = fs::absolute(fs::path(configFile)).parent_path().string();
@@ -941,6 +942,7 @@ int main(int argc, char* argv[]) {
                         }
                     }
                     g_current_user = username;
+                    setenv("AETHERCLI_USER", g_current_user.c_str(), 1);
                     Logger::info(g_current_user + ": logged in");
                     break;
                 }

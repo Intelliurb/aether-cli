@@ -17,6 +17,11 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
+if [ "$AETHERCLI_USER" != "admin" ]; then
+    get_msg "script_admin_only" "% Error: Only the 'admin' user can perform this action."
+    exit 1
+fi
+
 USERS_FILE="$DIR/users.json"
 
 if [ ! -f "$USERS_FILE" ]; then

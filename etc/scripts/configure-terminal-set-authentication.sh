@@ -20,6 +20,10 @@ fi
 if [ "$1" = "on" ]; then
     VAL="true"
 elif [ "$1" = "off" ]; then
+    if [ "$AETHERCLI_USER" != "admin" ]; then
+        get_msg "script_admin_only" "% Error: Only the 'admin' user can perform this action."
+        exit 1
+    fi
     VAL="false"
 else
     get_msg "script_set_auth_err_arg" "Error: argument must be 'on' or 'off'."

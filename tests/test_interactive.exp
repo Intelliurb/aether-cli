@@ -1,0 +1,219 @@
+#!/usr/bin/expect -f
+#
+# Testes do loop interativo (raw mode / VT100), que os testes Catch2 não cobrem:
+# eles testam funções puras, não o TTY. Aqui um PTY real é usado para digitar
+# no shell e conferir o que ele repinta.
+#
+# Uso: expect tests/test_interactive.exp [caminho/para/aethercli]
+
+set BIN [expr {$argc > 0 ? [lindex $argv 0] : "build/aethercli"}]
+set BIN [file normalize $BIN]
+set timeout 5
+
+# HOME próprio: isola history e ~/.aethercli/config.json (que teria precedência
+# sobre o -C e quebraria o teste na máquina de quem tem um config de usuário).
+set SANDBOX "/tmp/aethercli-exptest-[pid]"
+file mkdir $SANDBOX
+set env(HOME) $SANDBOX
+set env(TERM) "dumb"
+unset -nocomplain env(AETHERCLI_PEPPER)
+
+set CONF "$SANDBOX/config.json"
+set f [open $CONF w]
+puts $f {{
+  "motd": "TEST-MOTD-OK",
+  "commands": [
+    { "name": "show", "abbrev": "sh", "short_desc": "Exibir infos",
+      "subcommands": [
+        { "name": "version", "short_desc": "Versao", "activation": "echo VERSION_RAN", "syntax": "show version" },
+        { "name": "files", "short_desc": "Arquivos", "activation": "echo FILES_RAN", "syntax": "show files [path]", "args": "append" }
+      ] },
+    { "name": "set", "short_desc": "Definir" },
+    { "name": "run", "short_desc": "Executar" },
+    { "name": "rm", "short_desc": "Remover" },
+    { "name": "noargs", "short_desc": "Sem args", "activation": "echo NOARGS_RAN" }
+  ]
+}}
+close $f
+
+set failures 0
+set testnum 0
+
+proc ok {name} {
+    global testnum
+    incr testnum
+    puts "  \[PASS\] $name"
+}
+proc fail {name why} {
+    global failures testnum
+    incr testnum
+    incr failures
+    puts "  \[FAIL\] $name -- $why"
+}
+
+# Espera um padrão; reporta pass/fail sem abortar o resto da suíte.
+proc want {name pat} {
+    expect {
+        -re $pat { ok $name }
+        timeout  { fail $name "timeout esperando: $pat" }
+        eof      { fail $name "eof inesperado esperando: $pat" }
+    }
+}
+
+# Confere que um padrão NÃO aparece antes do próximo prompt.
+proc want_not {name pat} {
+    expect {
+        -re $pat          { fail $name "apareceu (nao deveria): $pat" }
+        -re {aethercli# } { ok $name }
+        timeout           { fail $name "timeout" }
+    }
+}
+
+puts "== aethercli: testes do loop interativo =="
+
+spawn $BIN -C $CONF
+want "motd exibido"            {TEST-MOTD-OK}
+want "prompt inicial"          {aethercli# }
+
+# --- Completar com TAB -----------------------------------------------------
+# "sh" + TAB -> unico match ("show"), completa e adiciona espaco.
+send "sh\t"
+want "tab completa prefixo unico" {show }
+
+send "\025"  ;# Ctrl+U limpa a linha
+
+# --- Duplo TAB lista opcoes ------------------------------------------------
+# "s" casa show e set: duplo TAB deve listar os dois.
+send "s\t\t"
+want "duplo tab lista 'show'" {show}
+want "duplo tab lista 'set'"  {set}
+
+send "\025"
+
+# --- '?' mostra ajuda contextual -------------------------------------------
+send "show ?"
+want "'?' lista subcomando version" {version}
+
+send "\025"
+
+# --- Comando ambiguo -------------------------------------------------------
+# "r" casa run e rm.
+send "r\r"
+want "comando ambiguo detectado" {Ambiguous command}
+
+# --- Entrada invalida com marcador ^ ---------------------------------------
+send "naoexiste\r"
+want "entrada invalida marca com ^" {Invalid input detected}
+
+# --- Execucao de comando ---------------------------------------------------
+send "show version\r"
+want "comando executa activation" {VERSION_RAN}
+
+# --- Abreviacao estilo Cisco -----------------------------------------------
+send "sh ver\r"
+want "abreviacao 'sh ver' resolve" {VERSION_RAN}
+
+# --- Comando incompleto ----------------------------------------------------
+send "show\r"
+want "comando incompleto avisa" {Incomplete command}
+
+# --- Politica de argumentos ------------------------------------------------
+send "noargs extra\r"
+want "comando sem args recusa argumento" {does not accept arguments}
+
+# --- Bloqueio de injecao de flag -------------------------------------------
+send "show files -rf\r"
+want "argumento com '-' bloqueado" {Security violation}
+
+# --- args: append repassa argumento ----------------------------------------
+send "show files /tmp\r"
+want "args append executa" {FILES_RAN}
+
+# --- Historico (seta pra cima) ---------------------------------------------
+send "\033\[A"
+want "seta cima traz ultimo comando" {show files /tmp}
+send "\025"
+
+# --- Ctrl+C limpa a linha, nao mata a shell --------------------------------
+send "lixo"
+send "\003"
+want "ctrl+c ecoa ^C" {\^C}
+send "show version\r"
+want "shell sobrevive ao ctrl+c" {VERSION_RAN}
+
+# --- Edicao UTF-8: backspace apaga o acento inteiro ------------------------
+# "ção" + 1 backspace deve sobrar "çã" (e nao meio byte de 'o').
+send "ção\177"
+want "backspace remove codepoint UTF-8 inteiro" {ção}
+send "\025"
+
+# --- exit encerra ----------------------------------------------------------
+send "exit\r"
+want "exit encerra a shell" {Exiting}
+expect eof
+
+# --- Fluxo de login (require_authentication) -------------------------------
+puts "-- login --"
+set ACONF "$SANDBOX/auth.json"
+set f [open $ACONF w]
+puts $f {{
+  "motd": "AUTH-MOTD-OK",
+  "require_authentication": "true",
+  "number_auth_fail": 2,
+  "commands": [
+    { "name": "show", "subcommands": [
+        { "name": "version", "short_desc": "Versao", "activation": "echo VERSION_RAN" } ] }
+  ]
+}}
+close $f
+
+# Provisiona o usuario via --adduser (cria users.json do zero).
+spawn $BIN -C $ACONF --adduser operador
+expect "New password: "
+send "senha12345\r"
+expect "Retype password: "
+send "senha12345\r"
+want "adduser cria usuario" {Added user 'operador'}
+expect eof
+
+# Senha errada e depois certa.
+spawn $BIN -C $ACONF
+want "login pede usuario"    {Username: }
+send "operador\r"
+want "login pede senha"      {Password: }
+send "senhaerrada\r"
+want "senha errada rejeitada" {cannot log you in}
+
+want "login repergunta usuario" {Username: }
+send "operador\r"
+expect "Password: "
+send "senha12345\r"
+want "login correto entra na shell" {AUTH-MOTD-OK}
+send "show version\r"
+want "comando roda apos login" {VERSION_RAN}
+send "exit\r"
+expect eof
+
+# Estouro do numero de tentativas encerra o processo (fail closed).
+spawn $BIN -C $ACONF
+expect "Username: "
+send "operador\r"
+expect "Password: "
+send "errada1\r"
+expect "cannot log you in"
+expect "Username: "
+send "operador\r"
+expect "Password: "
+send "errada2\r"
+want "estouro de tentativas encerra" {too many failed login attempts}
+expect eof
+
+# --- Resultado -------------------------------------------------------------
+file delete -force $SANDBOX
+puts ""
+if {$failures == 0} {
+    puts "Todos os $testnum testes interativos passaram."
+    exit 0
+}
+puts "$failures de $testnum testes interativos FALHARAM."
+exit 1
