@@ -1,10 +1,10 @@
 #!/bin/bash
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GLOBAL_CONFIG="$DIR/config.json"
+GLOBAL_CONFIG="$AETHERCLI_CONFIG"
 USER_CONFIG_DIR="$HOME/.aethercli"
 CONFIG_FILE="$USER_CONFIG_DIR/config.json"
 
-if [ ! -f "$CONFIG_FILE" ]; then
+if [ ! -f "$AETHERCLI_CONFIG" ]; then
     if [ -f "$GLOBAL_CONFIG" ]; then
         CONFIG_FILE="$GLOBAL_CONFIG"
     else
@@ -25,7 +25,7 @@ jq -r '
       if .activation then
         "  \($path)  -  \(.short_desc)"
       else
-        "  \($path)/ ..."
+        "  \($path)/  -  \(.short_desc // "...")"
       end,
       (if .subcommands then print_cmds(.subcommands; $path) else empty end)
     else empty end;
@@ -33,4 +33,4 @@ jq -r '
   if .commands then
     print_cmds(.commands; "")
   else empty end
-' "$CONFIG_FILE"
+' "$AETHERCLI_CONFIG"

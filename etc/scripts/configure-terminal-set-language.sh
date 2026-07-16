@@ -1,16 +1,7 @@
 #!/bin/bash
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LANG_FILE="$DIR/lang_${AETHERCLI_LANG:-en}.json"
-
-get_msg() {
-    local key="$1"
-    local default_msg="$2"
-    if [ -f "$LANG_FILE" ]; then
-        local val=$(jq -r ".$key // \"$default_msg\"" "$LANG_FILE" 2>/dev/null)
-        if [ "$val" != "null" ]; then echo "$val"; return; fi
-    fi
-    echo "$default_msg"
-}
+source "$DIR/scripts/utils.sh"
+check_write_permission "$AETHERCLI_CONFIG"
 
 if [ "$#" -ne 1 ]; then
     get_msg "script_lang_usage" "Usage: set language <english-us|portuguese-brasil>"

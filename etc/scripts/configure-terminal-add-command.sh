@@ -1,29 +1,20 @@
 #!/bin/bash
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GLOBAL_CONFIG="$DIR/config.json"
+GLOBAL_CONFIG="$AETHERCLI_CONFIG"
 USER_CONFIG_DIR="$HOME/.aethercli"
 CONFIG_FILE="$USER_CONFIG_DIR/config.json"
 
 mkdir -p "$USER_CONFIG_DIR"
-if [ ! -f "$CONFIG_FILE" ]; then
+if [ ! -f "$AETHERCLI_CONFIG" ]; then
     if [ -f "$GLOBAL_CONFIG" ]; then
-        cp "$GLOBAL_CONFIG" "$CONFIG_FILE"
+        cp "$GLOBAL_CONFIG" "$AETHERCLI_CONFIG"
     else
         echo "Error: config.json not found."
         exit 1
     fi
 fi
-LANG_FILE="$DIR/lang_${AETHERCLI_LANG:-en}.json"
-
-get_msg() {
-    local key="$1"
-    local default_msg="$2"
-    if [ -f "$LANG_FILE" ]; then
-        local val=$(jq -r ".$key // \"$default_msg\"" "$LANG_FILE" 2>/dev/null)
-        if [ "$val" != "null" ]; then echo "$val"; return; fi
-    fi
-    echo "$default_msg"
-}
+source "$DIR/scripts/utils.sh"
+check_write_permission "$AETHERCLI_CONFIG"
 
 if [ "$#" -lt 3 ]; then
     get_msg "script_add_cmd_usage" "Usage: add command <parent_path> <name> <short_desc> [activation] [syntax]"
@@ -58,12 +49,18 @@ TMP_FILE=$(mktemp)
 
 jq --arg path "$PARENT_PATH" --argjson new_cmd "$NEW_CMD" '
   ($path | sub("^/"; "") | split("/")) as $parts |
+  def upsert(arr; cmd):
+    if any(arr[]; .name == cmd.name) then
+      arr | map(if .name == cmd.name then cmd else . end)
+    else
+      arr + [cmd]
+    end;
   def insert_cmd($parts_left; $node):
     if ($parts_left | length) == 0 or ($parts_left | length == 1 and $parts_left[0] == "") then
       if ($node | type) == "array" then
-        $node + [$new_cmd]
+        upsert($node; $new_cmd)
       else
-        $node | .subcommands = ((.subcommands // []) + [$new_cmd])
+        $node | .subcommands = upsert((.subcommands // []); $new_cmd)
       end
     else
       if ($node | type) == "array" then
@@ -73,14 +70,14 @@ jq --arg path "$PARENT_PATH" --argjson new_cmd "$NEW_CMD" '
       end
     end;
   if $path == "/" or $path == "" then
-    .commands = (.commands + [$new_cmd])
+    .commands = upsert(.commands; $new_cmd)
   else
     .commands = (.commands | insert_cmd($parts; .))
   end
-' "$CONFIG_FILE" > "$TMP_FILE"
+' "$AETHERCLI_CONFIG" > "$TMP_FILE"
 
 if [ $? -eq 0 ]; then
-    cat "$TMP_FILE" > "$CONFIG_FILE"
+    cat "$TMP_FILE" > "$AETHERCLI_CONFIG"
     get_msg "script_cmd_added" "Command added successfully. Run 'reload conf' to apply."
 else
     get_msg "script_cmd_error" "Error: Failed to modify config file."

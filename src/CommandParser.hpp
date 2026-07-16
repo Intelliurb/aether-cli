@@ -28,6 +28,7 @@ struct Command {
 struct Config {
     std::vector<Command> commands;
     std::string motd;
+    std::string config_version;
     // Autenticação opcional: se true, exige login contra <configDir>/users.json.
     bool require_authentication = false;
     bool restricted_session = false;
@@ -61,6 +62,12 @@ public:
 
         if (j.contains("motd") && j["motd"].is_string()) {
             config.motd = j["motd"];
+        }
+
+        if (j.contains("config_version") && j["config_version"].is_string()) {
+            config.config_version = j["config_version"];
+        } else if (j.contains("version") && j["version"].is_string()) {
+            config.config_version = j["version"];
         }
 
         auto parseBool = [&](const std::string& key, bool& out_val) {

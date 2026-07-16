@@ -14,13 +14,13 @@
             {
               "name": "interface",
               "short_desc": "Status das interfaces",
-              "activation": "ip addr show",
+              "activation": "${AETHERCLI_SCRIPTS_DIR}/show-ip-interface.sh",
               "syntax": "show ip interface"
             },
             {
               "name": "route",
               "short_desc": "Tabela de roteamento",
-              "activation": "ip route show",
+              "activation": "${AETHERCLI_SCRIPTS_DIR}/show-ip-route.sh",
               "syntax": "show ip route"
             }
           ]
@@ -35,8 +35,20 @@
         {
           "name": "version",
           "short_desc": "Versão do sistema",
-          "activation": "uname -a",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-version.sh",
           "syntax": "show version"
+        },
+        {
+          "name": "config",
+          "short_desc": "Exibe a configuração do app",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-config.sh",
+          "syntax": "show config"
+        },
+        {
+          "name": "commands",
+          "short_desc": "Exibe a árvore de comandos",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-commands.sh",
+          "syntax": "show commands"
         }
       ]
     },
@@ -49,7 +61,125 @@
           "name": "terminal",
           "short_desc": "Configurar via terminal",
           "activation": "internal:config_mode",
-          "syntax": "configure terminal"
+          "syntax": "configure terminal",
+          "subcommands": [
+            {
+              "name": "list",
+              "short_desc": "Listagens do engine",
+              "subcommands": [
+                {
+                  "name": "macros",
+                  "short_desc": "Listar arquivos .macro disponíveis",
+                  "activation": "internal:list_macros",
+                  "syntax": "list macros"
+                },
+                {
+                  "name": "users",
+                  "short_desc": "Listar usuários configurados",
+                  "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-list-users.sh",
+                  "syntax": "list users"
+                },
+                {
+                  "name": "commands",
+                  "short_desc": "Listar comandos dinâmicos",
+                  "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-list-commands.sh",
+                  "syntax": "list commands"
+                }
+              ]
+            },
+            {
+              "name": "add",
+              "short_desc": "Adicionar recursos",
+              "subcommands": [
+                {
+                  "name": "user",
+                  "short_desc": "Adicionar um novo usuário",
+                  "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-add-user.sh",
+                  "syntax": "add user <username>",
+                  "args": "append"
+                },
+                {
+                  "name": "command",
+                  "short_desc": "Adicionar um comando ao menu",
+                  "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-add-command.sh",
+                  "syntax": "add command <parent_path> <name> <short_desc> [activation] [syntax]",
+                  "args": "append"
+                }
+              ]
+            },
+            {
+              "name": "rm",
+              "short_desc": "Remover recursos",
+              "subcommands": [
+                {
+                  "name": "user",
+                  "short_desc": "Remover um usuário",
+                  "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-rm-user.sh",
+                  "syntax": "rm user <username>",
+                  "args": "append"
+                },
+                {
+                  "name": "command",
+                  "short_desc": "Remover um comando do menu",
+                  "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-rm-command.sh",
+                  "syntax": "rm command <command_path>",
+                  "args": "append"
+                }
+              ]
+            },
+            {
+              "name": "set",
+              "short_desc": "Definir configurações",
+              "subcommands": [
+                {
+                  "name": "statusbar",
+                  "short_desc": "Ativar ou desativar a status bar",
+                  "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-set-statusbar.sh",
+                  "syntax": "set statusbar <on|off>",
+                  "args": "append"
+                },
+                {
+                  "name": "language",
+                  "short_desc": "Definir idioma (english-us|portuguese-brasil)",
+                  "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-set-language.sh",
+                  "syntax": "set language <english-us|portuguese-brasil>",
+                  "args": "append"
+                },
+                {
+                  "name": "authentication",
+                  "short_desc": "Ativar ou desativar exigência de login local",
+                  "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-set-authentication.sh",
+                  "syntax": "set authentication <on|off>",
+                  "args": "append"
+                }
+              ]
+            },
+            {
+              "name": "passwd",
+              "short_desc": "Alterar senhas",
+              "subcommands": [
+                {
+                  "name": "user",
+                  "short_desc": "Alterar senha de um usuário existente",
+                  "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-passwd-user.sh",
+                  "syntax": "passwd user <username>",
+                  "args": "append"
+                }
+              ]
+            },
+            {
+              "name": "show",
+              "short_desc": "Exibir informacoes do modo de configuracao",
+              "subcommands": [
+                {
+                  "name": "whoami",
+                  "short_desc": "Exibe o usuario atual",
+                  "activation": "echo $AETHERCLI_USER",
+                  "syntax": "show whoami"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
@@ -62,110 +192,6 @@
           "short_desc": "Executar arquivo .macro",
           "activation": "internal:run_macro",
           "syntax": "run macro <arquivo.macro>",
-          "args": "append"
-        }
-      ]
-    },
-    {
-      "name": "list",
-      "short_desc": "Listagens do engine",
-      "subcommands": [
-        {
-          "name": "macros",
-          "short_desc": "Listar arquivos .macro disponíveis",
-          "activation": "internal:list_macros",
-          "syntax": "list macros"
-        },
-        {
-          "name": "users",
-          "short_desc": "Listar usuários configurados",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-list-users.sh",
-          "syntax": "list users"
-        },
-        {
-          "name": "commands",
-          "short_desc": "Listar comandos dinâmicos",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-list-commands.sh",
-          "syntax": "list commands"
-        }
-      ]
-    },
-    {
-      "name": "add",
-      "short_desc": "Adicionar recursos",
-      "subcommands": [
-        {
-          "name": "user",
-          "short_desc": "Adicionar um novo usuário",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-add-user.sh",
-          "syntax": "add user <username>",
-          "args": "append"
-        },
-        {
-          "name": "command",
-          "short_desc": "Adicionar um comando ao menu",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-add-command.sh",
-          "syntax": "add command <parent_path> <name> <short_desc> [activation] [syntax]",
-          "args": "append"
-        }
-      ]
-    },
-    {
-      "name": "rm",
-      "short_desc": "Remover recursos",
-      "subcommands": [
-        {
-          "name": "user",
-          "short_desc": "Remover um usuário",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-rm-user.sh",
-          "syntax": "rm user <username>",
-          "args": "append"
-        },
-        {
-          "name": "command",
-          "short_desc": "Remover um comando do menu",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-rm-command.sh",
-          "syntax": "rm command <command_path>",
-          "args": "append"
-        }
-      ]
-    },
-    {
-      "name": "set",
-      "short_desc": "Definir configurações",
-      "subcommands": [
-        {
-          "name": "statusbar",
-          "short_desc": "Ativar ou desativar a status bar",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-set-statusbar.sh",
-          "syntax": "set statusbar <on|off>",
-          "args": "append"
-        },
-        {
-          "name": "language",
-          "short_desc": "Definir idioma (english-us|portuguese-brasil)",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-set-language.sh",
-          "syntax": "set language <english-us|portuguese-brasil>",
-          "args": "append"
-        },
-        {
-          "name": "authentication",
-          "short_desc": "Ativar ou desativar exigência de login local",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-set-authentication.sh",
-          "syntax": "set authentication <on|off>",
-          "args": "append"
-        }
-      ]
-    },
-    {
-      "name": "passwd",
-      "short_desc": "Alterar senhas",
-      "subcommands": [
-        {
-          "name": "user",
-          "short_desc": "Alterar senha de um usuário existente",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-passwd-user.sh",
-          "syntax": "passwd user <username>",
           "args": "append"
         }
       ]
@@ -188,6 +214,12 @@
           "syntax": "reload conf"
         }
       ]
+    },
+    {
+      "name": "time",
+      "short_desc": "Mostrar a hora (atualizado)",
+      "activation": "date",
+      "syntax": "time"
     }
   ]
 }

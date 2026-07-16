@@ -9,6 +9,7 @@
 #include <thread>
 #include <iomanip>
 #include <chrono>
+#include <ctime>
 #include <filesystem>
 #include <cstdlib>
 #include <cerrno>
@@ -149,9 +150,21 @@ public:
     const char* what() const noexcept override { return "Reload Configuration"; }
 };
 
+std::string getMacroLogFilename(const std::string& macroFile) {
+    std::string base = fs::path(macroFile).filename().string();
+    const char* user = std::getenv("AETHERCLI_USER");
+    std::string user_str = user ? user : "unknown";
+    
+    auto t = std::time(nullptr);
+    auto tm = *std::localtime(&t);
+    std::ostringstream oss;
+    oss << base << "." << user_str << "." << std::put_time(&tm, "%Y-%m-%d.%H-%M-%S") << ".out";
+    return oss.str();
+}
+
 bool executeCommand(const std::string& full_input, const std::vector<Command>& tree,
                     LocalizationManager& lang, Context& ctx, const std::string& configDir,
-                    int macro_depth = 0, const std::string& prompt = "") {
+                    int macro_depth = 0, const std::string& prompt = "", int* out_status = nullptr) {
     if (full_input.length() > 4096) {
         std::cout << "%% Error: Command line exceeds maximum allowed length (4096 characters)." << std::endl;
         return true;
@@ -208,24 +221,80 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
     if (cmd.activation == "internal:run_macro") {
         if (tokens.size() <= depth) {
             std::cout << "\n%% Error: Missing macro filename." << std::endl;
+            if (out_status) *out_status = 1;
             return true;
         }
         if (macro_depth >= MAX_MACRO_DEPTH) {
             std::cout << "\n%% Error: Macro recursion limit (" << MAX_MACRO_DEPTH << ") reached." << std::endl;
+            if (out_status) *out_status = 1;
             return true;
         }
         std::string macroFile = tokens[depth];
         if (macroFile[0] != '/') macroFile = configDir + "/" + macroFile;
 
+        std::string outFile = configDir + "/" + getMacroLogFilename(macroFile);
+
         std::cout << "\n% Loading macro: " << macroFile << std::endl;
         auto macroCommands = MacroEngine::loadMacro(macroFile);
         if (!macroCommands) {
             std::cout << "%% Error: Cannot open macro file: " << macroFile << std::endl;
+            if (out_status) *out_status = 1;
             return true;
         }
-        for (const auto& mCmd : *macroCommands) {
-            executeCommand(mCmd, tree, lang, ctx, configDir, macro_depth + 1, "");
+
+        int pipefd[2];
+        if (pipe(pipefd) == -1) {
+            std::cout << "%% Error: failed to create pipe for logging" << std::endl;
+            if (out_status) *out_status = 1;
+            return true;
         }
+        std::cout << std::flush;
+        std::cerr << std::flush;
+
+        pid_t tee_pid = fork();
+        if (tee_pid == 0) {
+            close(pipefd[1]);
+            dup2(pipefd[0], STDIN_FILENO);
+            close(pipefd[0]);
+            execlp("tee", "tee", "-a", outFile.c_str(), nullptr);
+            _exit(1);
+        }
+        close(pipefd[0]);
+        int saved_stdout = dup(STDOUT_FILENO);
+        int saved_stderr = dup(STDERR_FILENO);
+        dup2(pipefd[1], STDOUT_FILENO);
+        dup2(pipefd[1], STDERR_FILENO);
+
+        int m_status = 0;
+        for (const auto& mCmd : *macroCommands) {
+            std::cout << prompt << mCmd << "\n";
+            std::cout << std::flush;
+            int step_status = 0;
+            bool handled = executeCommand(mCmd, tree, lang, ctx, configDir, macro_depth + 1, prompt, &step_status);
+            if (!handled || step_status != 0) {
+                if (!handled) step_status = 127;
+                std::cout << "%% Macro aborted due to error at: " << mCmd << std::endl;
+                Logger::error("Macro '" + macroFile + "' aborted at command: " + mCmd);
+                m_status = step_status;
+                break;
+            }
+        }
+        if (m_status == 0) {
+            Logger::info("Macro '" + macroFile + "' completed successfully");
+        }
+
+        std::cout << std::flush;
+        std::cerr << std::flush;
+        dup2(saved_stdout, STDOUT_FILENO);
+        dup2(saved_stderr, STDERR_FILENO);
+        close(saved_stdout);
+        close(saved_stderr);
+        close(pipefd[1]);
+        int status;
+        waitpid(tee_pid, &status, 0);
+
+        std::cout << "% Macro execution finished. Log saved to: " << outFile << std::endl;
+        if (out_status) *out_status = m_status;
         return true;
     }
 
@@ -336,14 +405,20 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
         }
         if (r.signaled) {
             std::cout << "% Command terminated by signal " << r.term_signal << "." << std::endl;
+            if (out_status) *out_status = 128 + r.term_signal;
         } else if (r.exit_code == 127) {
             std::cout << "% Command not found or could not be executed (127)." << std::endl;
+            if (out_status) *out_status = 127;
         } else if (r.exit_code != 0) {
             std::cout << "% Command exited with status " << r.exit_code << "." << std::endl;
+            if (out_status) *out_status = r.exit_code;
+        } else {
+            if (out_status) *out_status = 0;
         }
     } catch (const std::exception& e) {
         std::cout << "Error: " << e.what() << std::endl;
         Logger::error(e.what());
+        if (out_status) *out_status = 1;
     }
     return true;
 }
@@ -373,7 +448,11 @@ void showOptions(const std::vector<Command>& tree, const std::string& current_in
     if (parent && (endsWithSpace || parent->subcommands.empty())) {
         if (parent->subcommands.empty()) {
             if (parent->allow_args) {
-                std::cout << "  <cr>\n";
+                if (!parent->syntax.empty()) {
+                    std::cout << "  " << parent->syntax << "\n";
+                } else {
+                    std::cout << "  <args>\n";
+                }
             } else {
                 std::cout << "  <cr>\n";
             }
@@ -406,7 +485,7 @@ void showOptions(const std::vector<Command>& tree, const std::string& current_in
     }
 }
 
-void runInteractive(const std::vector<Command>& commands, const std::string& langSource, const std::string& configDir, const std::string& motd, bool status_bar_enabled = false) {
+void runInteractive(const std::vector<Command>& commands, const std::string& langSource, const std::string& configDir, const std::string& motd, const std::string& config_version, const std::string& configFile, bool status_bar_enabled = false) {
     LocalizationManager lang;
     lang.loadLanguage(langSource, configDir);
 
@@ -415,6 +494,12 @@ void runInteractive(const std::vector<Command>& commands, const std::string& lan
     } else {
         std::cout << lang.get("welcome") << std::endl;
     }
+
+    std::cout << "Config file: " << configFile;
+    if (!config_version.empty()) {
+        std::cout << " (Version: " << config_version << ")";
+    }
+    std::cout << std::endl;
 
     AppState state;
     std::string buffer;
@@ -533,6 +618,21 @@ void runInteractive(const std::vector<Command>& commands, const std::string& lan
     while (true) {
         std::string prompt = (state.context == Context::CONFIG) ? "aethercli(config)# " : "aethercli# ";
         
+        const std::vector<Command>* current_tree = &commands;
+        if (state.context == Context::CONFIG) {
+            for (const auto& c : commands) {
+                if (c.name == "configure") {
+                    for (const auto& sub : c.subcommands) {
+                        if (sub.name == "terminal") {
+                            current_tree = &sub.subcommands;
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
         updateStatusBar();
         
         redraw(prompt, cached_status_bar);
@@ -573,7 +673,7 @@ void runInteractive(const std::vector<Command>& commands, const std::string& lan
                 history_index = -1;
                 bool keep_running = true;
                 try {
-                    keep_running = executeCommand(buffer, commands, lang, state.context, configDir, 0, prompt);
+                    keep_running = executeCommand(buffer, *current_tree, lang, state.context, configDir, 0, prompt);
                 } catch (const ReloadException&) {
                     throw; // allow outer loop to handle reload
                 } catch (const std::exception& e) {
@@ -694,11 +794,11 @@ void runInteractive(const std::vector<Command>& commands, const std::string& lan
 
             if (state.tab_count == 2) { // Double tab: lista as opções
                 std::cout << std::endl;
-                showOptions(commands, buffer, false);
+                showOptions(*current_tree, buffer, false);
                 last_printed_rows = 0;
             } else if (state.tab_count >= 3) { // Triple tab: lista as opções com sintaxe
                 std::cout << std::endl;
-                showOptions(commands, buffer, true);
+                showOptions(*current_tree, buffer, true);
                 last_printed_rows = 0;
             } else {
                 // Completa a partir do texto ANTES do cursor (não do buffer todo).
@@ -708,10 +808,10 @@ void runInteractive(const std::vector<Command>& commands, const std::string& lan
                 std::string last_token = (tokens.empty() || endsWithSpace) ? "" : tokens.back();
                 if (!last_token.empty()) tokens.pop_back();
 
-                const std::vector<Command>* level = &commands;
+                const std::vector<Command>* level = current_tree;
                 bool valid_prefix = true;
                 if (!tokens.empty()) {
-                    auto res = cli::completer::resolve(commands, tokens);
+                    auto res = cli::completer::resolve(*current_tree, tokens);
                     if (res.cmd && res.depth == tokens.size()) {
                         level = &res.cmd->subcommands;
                     } else {
@@ -741,7 +841,7 @@ void runInteractive(const std::vector<Command>& commands, const std::string& lan
         } else if (c == '?' && std::count(buffer.begin(), buffer.end(), '\"') % 2 == 0) {
             // '?' dentro de aspas abertas é literal; fora delas, ajuda imediata.
             std::cout << std::endl;
-            showOptions(commands, buffer, false);
+            showOptions(*current_tree, buffer, false);
             last_printed_rows = 0;
         } else if (isprint((unsigned char)c) || (c & 0x80)) {
             if (buffer.length() < MAX_CHARS) {
@@ -862,16 +962,6 @@ int main(int argc, char* argv[]) {
 
     setupLogger(enableLog, logPath);
 
-    if (!adduserName.empty()) {
-        try {
-            std::string configDir = fs::absolute(fs::path(configFile)).parent_path().string();
-            return Auth::addUser(configDir + "/users.json", adduserName) ? 0 : 1;
-        } catch (const std::exception& e) {
-            std::cerr << "Fatal: " << e.what() << std::endl;
-            return 1;
-        }
-    }
-
     Config config;
     try {
         config = loadAppConfig(configFile, langOverride, langSource);
@@ -880,44 +970,73 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    if (!adduserName.empty()) {
+        try {
+            std::string configDir = fs::absolute(fs::path(configFile)).parent_path().string();
+            std::string usersFile = config.passwd_file.empty() ? (configDir + "/users.json") : config.passwd_file;
+            LocalizationManager lang;
+            lang.loadLanguage(langSource, configDir);
+            return Auth::addUser(usersFile, adduserName, lang) ? 0 : 1;
+        } catch (const std::exception& e) {
+            std::cerr << "Fatal: " << e.what() << std::endl;
+            return 1;
+        }
+    }
+
+    if (!config.require_authentication) {
+        g_current_user = "admin";
+    }
+
     setenv("AETHERCLI_LANG", langSource.c_str(), 1);
     setenv("AETHERCLI_USER", g_current_user.c_str(), 1);
 
     try {
         std::string configDir = fs::absolute(fs::path(configFile)).parent_path().string();
+        setenv("AETHERCLI_CONFIG", fs::absolute(fs::path(configFile)).string().c_str(), 1);
+
 
         std::string actualScriptsDir = config.scripts_dir;
         if (!actualScriptsDir.empty() && actualScriptsDir[0] != '/') {
             actualScriptsDir = configDir + "/" + actualScriptsDir;
         }
         setenv("AETHERCLI_SCRIPTS_DIR", actualScriptsDir.c_str(), 1);
+        LocalizationManager lang;
+        lang.loadLanguage(langSource, configDir);
+
+        std::string usersFile = config.passwd_file;
+        if (usersFile.empty()) {
+            usersFile = configDir + "/users.json";
+        } else if (usersFile[0] != '/') {
+            usersFile = configDir + "/" + usersFile;
+        }
+        setenv("AETHERCLI_USERS_FILE", usersFile.c_str(), 1);
 
         // Login antes de qualquer execução (interativa ou headless): fail closed.
-        if (config.require_authentication) {
-            std::string usersFile = config.passwd_file;
-            if (usersFile.empty()) {
-                usersFile = configDir + "/users.json";
-            } else if (usersFile[0] != '/') {
-                usersFile = configDir + "/" + usersFile;
-            }
+        auto doAuth = [&]() -> bool {
+            if (!config.require_authentication || !g_current_user.empty()) return true;
             AuthError err = AuthError::None;
             auto users = Auth::loadUsers(usersFile, err);
             if (err != AuthError::None) {
                 Logger::error(std::string(errorEntry(err).tag) + ": " + usersFile);
-                std::cerr << "Fatal: " << errorEntry(err).message << ": " << usersFile
+                std::cerr << lang.getOr("auth_fatal", "Fatal: ") << lang.getOr(err == AuthError::UsersFileInvalid ? "auth_err_users_invalid" : "auth_err_users_missing", errorEntry(err).message) << ": " << usersFile
                           << " (use --adduser <name> to create users)" << std::endl;
-                return 1;
+                return false;
             }
             const std::string pepper = Auth::pepperFromEnv();
             int fails = 0;
             while (true) {
-                std::cout << "Username: " << std::flush;
                 std::string username;
-                if (!Auth::readLineFd(username)) {
+                if (!Auth::readLineFd(username, false, lang.getOr("auth_prompt_username", "Username: "))) {
                     std::cout << std::endl;
-                    return 1; // EOF no stdin: sem como autenticar
+                    std::cerr << lang.getOr("auth_err_aborted", "%% Login aborted by user.") << std::endl;
+                    return false;
                 }
-                std::string password = Auth::readHiddenLine("Password: ");
+                std::string password;
+                if (!Auth::readHiddenLine(lang.getOr("auth_prompt_password", "Password: "), password)) {
+                    std::cout << std::endl;
+                    std::cerr << lang.getOr("auth_err_aborted", "%% Login aborted by user.") << std::endl;
+                    return false;
+                }
                 if (Auth::verify(users, username, password, pepper)) {
                     if (config.restricted_session) {
 #ifdef AETHERCLI_VAR_DIR
@@ -944,30 +1063,30 @@ int main(int argc, char* argv[]) {
                     g_current_user = username;
                     setenv("AETHERCLI_USER", g_current_user.c_str(), 1);
                     Logger::info(g_current_user + ": logged in");
-                    break;
+                    return true;
                 }
                 ++fails;
                 Logger::error(std::string(errorEntry(AuthError::BadCredentials).tag) +
                               ": user '" + username + "' (" + std::to_string(fails) + "/" +
                               std::to_string(config.number_auth_fail) + ")");
-                std::cout << errorEntry(AuthError::BadCredentials).message << std::endl;
+                std::cout << lang.getOr("auth_fail", errorEntry(AuthError::BadCredentials).message) << std::endl;
                 if (fails >= config.number_auth_fail) {
                     Logger::error(errorEntry(AuthError::TooManyAttempts).tag);
-                    std::cerr << errorEntry(AuthError::TooManyAttempts).message << std::endl;
-                    return 1;
+                    std::cerr << lang.getOr("auth_locked", errorEntry(AuthError::TooManyAttempts).message) << std::endl;
+                    return false;
                 }
             }
-        }
+        };
+
+        if (!doAuth()) return 1;
 
         if (headless) {
-            LocalizationManager lang;
-            lang.loadLanguage(langSource, configDir);
             Context dummy = Context::GLOBAL;
             executeCommand(target, config.commands, lang, dummy, configDir);
         } else {
             while (true) {
                 try {
-                    runInteractive(config.commands, langSource, configDir, config.motd, config.status_bar);
+                    runInteractive(config.commands, langSource, configDir, config.motd, config.config_version, configFile, config.status_bar);
                     break; // Sai do loop se runInteractive retornar normalmente (exit)
                 } catch (const ReloadException&) {
                     try {
@@ -979,6 +1098,16 @@ int main(int argc, char* argv[]) {
                             actualScriptsDir = configDir + "/" + actualScriptsDir;
                         }
                         setenv("AETHERCLI_SCRIPTS_DIR", actualScriptsDir.c_str(), 1);
+                        
+                        std::string usersFile = config.passwd_file;
+                        if (usersFile.empty()) {
+                            usersFile = configDir + "/users.json";
+                        } else if (usersFile[0] != '/') {
+                            usersFile = configDir + "/" + usersFile;
+                        }
+                        setenv("AETHERCLI_USERS_FILE", usersFile.c_str(), 1);
+                        
+                        if (!doAuth()) return 1;
                     } catch (const std::exception& ce) {
                         std::cerr << "Fatal Error on reload: " << ce.what() << std::endl;
                         return 1;

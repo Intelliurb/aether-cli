@@ -88,12 +88,27 @@ AetherCLI reserves specific `activation` strings for internal engine features:
 
 ### 4.2 Macro System
 Macros are simple text files with the `.macro` extension. Each line is executed as a standard CLI command.
-- Empty lines and lines starting with `#` are ignored.
-- Macros are searched in the same directory as your main JSON configuration file (absolute paths are also accepted).
-- Macros may call other macros; recursion is capped at depth 8.
-- **Example usage:**
-  `run macro setup.macro`
-  `list macros`
+
+1. The engine looks for plain text files, usually with the `.macro` extension, stored in your configuration directory (e.g., `~/.aethercli/`).
+2. You can run the command `list macros` (or `configure terminal` -> `list macros`) to see what is available.
+3. When you run `run macro my_script.macro`, the engine opens the file and "types" the commands line-by-line into the shell, just as if a user were operating the keyboard. It feeds these lines directly into the native execution loop (`executeCommand`).
+4. There is a strict safeguard against recursion (a `MAX_MACRO_DEPTH` limiter) in the source code to prevent a macro from calling itself indefinitely and locking the system in an infinite loop.
+
+**Practical Use Case and Example:**
+In enterprise and infrastructure environments, batch configuration is highly common. Instead of typing dozens of commands manually in the prompt, you can create a file named `initial_setup.macro` containing the following:
+
+```text
+configure terminal
+add user john
+add user jane
+set language portuguese-brasil
+set statusbar on
+reload conf
+exit
+```
+
+And then apply all steps automatically by running:
+`aethercli# run macro initial_setup.macro`
 
 ---
 

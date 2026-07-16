@@ -1,0 +1,57 @@
+{
+  "//": "==========================================================================",
+  "//": "AetherCLI Configuration Template",
+  "//": "==========================================================================",
+  
+  "//": "The directory containing the bash scripts for commands",
+  "scripts_dir": "/usr/local/etc/aethercli/scripts",
+  
+  "//": "Message of the day displayed after successful login",
+  "motd": "Welcome to AetherCLI!\nType '?' or double-tab for help.\n",
+  
+  "//": "Configuration version printed after MOTD",
+  "config_version": "1.0.0",
+  
+  "//": "If true, enforces user login via users.json authentication",
+  "require_authentication": false,
+  
+  "//": "File storing PBKDF2 hashed user credentials",
+  "passwd_file": "/usr/local/etc/aethercli/users.json",
+  
+  "//": "If true, prevents multiple concurrent logins for the same user",
+  "restricted_session": false,
+  
+  "//": "Number of failed login attempts before locking out the session",
+  "number_auth_fail": 3,
+  
+  "//": "Enable or disable the status bar at the bottom of the screen",
+  "status_bar": true,
+  
+  "//": "==========================================================================",
+  "//": "Command Hierarchy Definition",
+  "//": "==========================================================================",
+  "//": "Define the command tree structure below. Each command can have:",
+  "//": "  - name:        The exact word typed by the user",
+  "//": "  - abbrev:      Optional shortcut (e.g. 'sh' for 'show')",
+  "//": "  - short_desc:  Help text displayed for '?'",
+  "//": "  - activation:  The shell command executed (can use ${AETHERCLI_SCRIPTS_DIR})",
+  "//": "  - syntax:      Full syntax description shown in help",
+  "//": "  - args:        'append' to pass trailing arguments to the shell command",
+  "//": "  - subcommands: Array of nested subcommands",
+  
+  "commands": [
+    {
+      "name": "show",
+      "abbrev": "sh",
+      "short_desc": "Display system information",
+      "subcommands": [
+        {
+          "name": "version",
+          "short_desc": "System version",
+          "activation": "uname -a",
+          "syntax": "show version"
+        }
+      ]
+    }
+  ]
+}

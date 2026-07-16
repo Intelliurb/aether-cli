@@ -1,16 +1,7 @@
 #!/bin/bash
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LANG_FILE="$DIR/lang_${AETHERCLI_LANG:-en}.json"
-
-get_msg() {
-    local key="$1"
-    local default_msg="$2"
-    if [ -f "$LANG_FILE" ]; then
-        local val=$(jq -r ".$key // \"$default_msg\"" "$LANG_FILE" 2>/dev/null)
-        if [ "$val" != "null" ]; then echo "$val"; return; fi
-    fi
-    echo "$default_msg"
-}
+source "$DIR/scripts/utils.sh"
+check_write_permission "$AETHERCLI_USERS_FILE"
 
 if [ "$#" -ne 1 ]; then
     get_msg "script_rm_usage" "Usage: rm user <username>"
@@ -22,7 +13,7 @@ if [ "$AETHERCLI_USER" != "admin" ]; then
     exit 1
 fi
 
-USERS_FILE="$DIR/users.json"
+USERS_FILE="$AETHERCLI_USERS_FILE"
 
 if [ ! -f "$USERS_FILE" ]; then
     get_msg "script_rm_none" "No users configured."

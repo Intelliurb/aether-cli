@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <nlohmann/json.hpp>
+#include "LocalizationManager.hpp"
 
 namespace cli::auth {
 
@@ -339,51 +340,67 @@ public:
         return r;
     }
 
-    // Lê uma linha direto do fd 0, byte a byte, sem buffer de iostream: o
-    // getline do cin lê blocos inteiros de um pipe, engolindo o input que o
-    // loop interativo (read() no fd) consumiria depois do login.
-    static bool readLineFd(std::string& out) {
+    // Lê uma linha direto do fd 0. Permite ocultar digitação (senha).
+    // Aborta instantaneamente e retorna false caso ESC seja pressionado.
+    static bool readLineFd(std::string& out, bool hidden = false, const std::string& prompt = "") {
         out.clear();
+        struct termios oldt {}, newt {};
+        bool tty = isatty(STDIN_FILENO) && tcgetattr(STDIN_FILENO, &oldt) == 0;
+        if (tty) {
+            newt = oldt;
+            newt.c_lflag &= ~(ICANON | ECHO);
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &newt);
+        }
+        if (!prompt.empty()) {
+            std::cout << prompt << std::flush;
+        }
+        bool aborted = false;
         for (;;) {
             char c;
             ssize_t n = ::read(STDIN_FILENO, &c, 1);
             if (n == 1) {
-                if (c == '\n') return true;
-                out += c;
+                if (c == '\x1b') {
+                    aborted = true;
+                    break;
+                }
+                if (c == '\n' || c == '\r') {
+                    if (tty) std::cout << std::endl;
+                    break;
+                }
+                if (c == 127 || c == '\b') {
+                    if (!out.empty()) {
+                        out.pop_back();
+                        if (tty && !hidden) std::cout << "\b \b" << std::flush;
+                    }
+                } else if (isprint((unsigned char)c) || (c & 0x80)) {
+                    out += c;
+                    if (tty && !hidden) std::cout << c << std::flush;
+                }
             } else if (n == -1 && errno == EINTR) {
                 continue;
             } else {
-                return !out.empty(); // EOF: última linha sem '\n' ainda vale
+                if (out.empty()) aborted = true;
+                break;
             }
         }
+        if (tty) {
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &oldt);
+        }
+        return !aborted;
     }
 
     // Lê uma linha com echo desligado (senha). Fora de TTY lê normalmente.
-    static std::string readHiddenLine(const std::string& prompt) {
-        std::cout << prompt << std::flush;
-        struct termios oldt {};
-        bool tty = isatty(STDIN_FILENO) && tcgetattr(STDIN_FILENO, &oldt) == 0;
-        // Ctrl+C aqui deixaria o terminal sem echo; ignorar SIGINT durante a leitura.
+    static bool readHiddenLine(const std::string& prompt, std::string& out) {
         auto old_int = std::signal(SIGINT, SIG_IGN);
-        if (tty) {
-            struct termios noecho = oldt;
-            noecho.c_lflag &= ~ECHO;
-            tcsetattr(STDIN_FILENO, TCSAFLUSH, &noecho);
-        }
-        std::string line;
-        readLineFd(line);
-        if (tty) {
-            tcsetattr(STDIN_FILENO, TCSAFLUSH, &oldt);
-            std::cout << std::endl; // o Enter não ecoou
-        }
+        bool res = readLineFd(out, true, prompt);
         std::signal(SIGINT, old_int);
-        return line;
+        return res;
     }
 
     // Provisionamento via CLI (--adduser): cria/atualiza usuário no users.json.
-    static bool addUser(const std::string& usersFile, const std::string& username) {
+    static bool addUser(const std::string& usersFile, const std::string& username, const cli::i18n::LocalizationManager& lang) {
         if (username.length() < 1 || username.length() > 32) {
-            std::cerr << "%% Error: Username must be between 1 and 32 characters long." << std::endl;
+            std::cerr << lang.getOr("auth_err_username_len", "%% Error: Username must be between 1 and 32 characters long.") << std::endl;
             return false;
         }
 
@@ -392,28 +409,47 @@ public:
             char c = username[i];
             if (i == 0) {
                 if (!(c >= 'a' && c <= 'z') && c != '_') {
-                    std::cerr << "%% Error: Username must start with a lowercase letter or underscore." << std::endl;
+                    std::cerr << lang.getOr("auth_err_username_start", "%% Error: Username must start with a lowercase letter or underscore.") << std::endl;
                     return false;
                 }
             } else {
                 if (!(c >= 'a' && c <= 'z') && !(c >= '0' && c <= '9') && c != '_' && c != '-') {
-                    std::cerr << "%% Error: Username contains invalid characters." << std::endl;
+                    std::cerr << lang.getOr("auth_err_username_invalid", "%% Error: Username contains invalid characters.") << std::endl;
                     return false;
                 }
             }
         }
-
-        if (pepperFromEnv().empty()) {
-            std::cerr << "Warning: AETHERCLI_PEPPER not set; hashing without pepper." << std::endl;
+        std::cout << lang.getOr("auth_msg_pw_criteria", "Password must be between 8 and 255 characters long.") << std::endl;
+        std::string p1;
+        
+        int attempts = 0;
+        bool success = false;
+        while (attempts < 3) {
+            if (!readHiddenLine(lang.getOr("auth_prompt_new_pw", "New password: "), p1)) {
+                std::cout << std::endl;
+                return false;
+            }
+            if (p1.length() < 8 || p1.length() > 255) {
+                std::cerr << lang.getOr("auth_err_pw_len", "%% Error: Password must be between 8 and 255 characters long.") << std::endl;
+                attempts++;
+                continue;
+            }
+            std::string p2;
+            if (!readHiddenLine(lang.getOr("auth_prompt_retype_pw", "Retype password: "), p2)) {
+                std::cout << std::endl;
+                return false;
+            }
+            if (p1 != p2) {
+                std::cerr << lang.getOr("auth_err_pw_mismatch", "%% Error: passwords do not match") << std::endl;
+                attempts++;
+                continue;
+            }
+            success = true;
+            break;
         }
-        std::string p1 = readHiddenLine("New password: ");
-        if (p1.length() < 8 || p1.length() > 255) {
-            std::cerr << "%% Error: Password must be between 8 and 255 characters long." << std::endl;
-            return false;
-        }
-        std::string p2 = readHiddenLine("Retype password: ");
-        if (p1 != p2) {
-            std::cerr << "%% Error: " << errorEntry(AuthError::PasswordMismatch).message << std::endl;
+        
+        if (!success) {
+            std::cerr << lang.getOr("auth_err_pw_attempts", "%% Error: Too many failed attempts.") << std::endl;
             return false;
         }
 
@@ -426,7 +462,7 @@ public:
                 try {
                     in >> j;
                 } catch (const nlohmann::json::parse_error&) {
-                    std::cerr << "%% Error: " << errorEntry(AuthError::UsersFileInvalid).message
+                    std::cerr << lang.getOr("auth_err_users_invalid", "%% Error: users file is malformed")
                               << ": " << usersFile << std::endl;
                     return false;
                 }
@@ -450,14 +486,13 @@ public:
 
         std::ofstream out(usersFile);
         if (!out) {
-            std::cerr << "%% Error: cannot write " << usersFile << std::endl;
+            std::cerr << "%% Error: cannot write " << usersFile << " (" << std::strerror(errno) << ")" << std::endl;
             return false;
         }
         out << j.dump(4) << std::endl;
-        out.close();
         ::chmod(usersFile.c_str(), 0600); // hashes de senha não devem ser públicos
-        std::cout << (replaced ? "Updated" : "Added") << " user '" << username
-                  << "' in " << usersFile << std::endl;
+        std::cout << (replaced ? lang.getOr("auth_msg_user_updated", "Updated user '") : lang.getOr("auth_msg_user_added", "Added user '")) << username
+                  << lang.getOr("auth_msg_in", "' in ") << usersFile << std::endl;
         return true;
     }
 };
