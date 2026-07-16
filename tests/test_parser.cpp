@@ -108,3 +108,20 @@ TEST_CASE("parseConfig: parse de restricted_session") {
     TempConfig cfg4(R"({"commands": [{"name": "x"}], "restricted_session": "invalid"})");
     REQUIRE_THROWS(CommandParser::parseConfig(cfg4.path()));
 }
+
+TEST_CASE("parseConfig: parse de require_authentication") {
+    TempConfig cfg1(R"({"commands": [{"name": "x"}], "require_authentication": true})");
+    auto config1 = CommandParser::parseConfig(cfg1.path());
+    REQUIRE(config1.require_authentication == true);
+
+    TempConfig cfg2(R"({"commands": [{"name": "x"}], "require_authentication": "true"})");
+    auto config2 = CommandParser::parseConfig(cfg2.path());
+    REQUIRE(config2.require_authentication == true);
+
+    TempConfig cfg3(R"({"commands": [{"name": "x"}], "require_authentication": false})");
+    auto config3 = CommandParser::parseConfig(cfg3.path());
+    REQUIRE(config3.require_authentication == false);
+
+    TempConfig cfg4(R"({"commands": [{"name": "x"}], "require_authentication": "invalid"})");
+    REQUIRE_THROWS(CommandParser::parseConfig(cfg4.path()));
+}
