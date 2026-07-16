@@ -147,6 +147,26 @@
           "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-set-language.sh",
           "syntax": "set language <english-us|portuguese-brasil>",
           "args": "append"
+        },
+        {
+          "name": "authentication",
+          "short_desc": "Ativar ou desativar exigência de login local",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-set-authentication.sh",
+          "syntax": "set authentication <on|off>",
+          "args": "append"
+        }
+      ]
+    },
+    {
+      "name": "passwd",
+      "short_desc": "Alterar senhas",
+      "subcommands": [
+        {
+          "name": "user",
+          "short_desc": "Alterar senha de um usuário existente",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-passwd-user.sh",
+          "syntax": "passwd user <username>",
+          "args": "append"
         }
       ]
     },

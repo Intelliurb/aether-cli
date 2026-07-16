@@ -861,6 +861,13 @@ int main(int argc, char* argv[]) {
                         config.status_bar = (s == "true");
                     }
                 }
+                std::ifstream afile(userDir + "/authentication");
+                if (afile.is_open()) {
+                    std::string a;
+                    if (afile >> a) {
+                        config.require_authentication = (a == "true");
+                    }
+                }
             }
         } catch (const std::exception& e) {
             std::cerr << e.what() << std::endl;
@@ -982,6 +989,13 @@ int main(int argc, char* argv[]) {
                                 std::string s;
                                 if (sfile >> s) {
                                     config.status_bar = (s == "true");
+                                }
+                            }
+                            std::ifstream afile(userDir + "/authentication");
+                            if (afile.is_open()) {
+                                std::string a;
+                                if (afile >> a) {
+                                    config.require_authentication = (a == "true");
                                 }
                             }
                         }
