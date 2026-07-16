@@ -30,14 +30,17 @@ endif()
 
 include(FetchContent)
 
-# JSON Library (URL_HASH: integridade do download)
-FetchContent_Declare(
-  json
-  URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
-  URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
-)
-set(JSON_BuildTests OFF CACHE INTERNAL "")
-FetchContent_MakeAvailable(json)
+find_package(nlohmann_json QUIET)
+if(NOT nlohmann_json_FOUND)
+  # JSON Library fallback to FetchContent using .tar.gz (avoids xz dependency on minimal systems)
+  FetchContent_Declare(
+    json
+    URL https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.tar.gz
+    URL_HASH SHA256=0d8ef5af7f9794e3263480193c491549b2ba6cc74bb018906202ada498a79406
+  )
+  set(JSON_BuildTests OFF CACHE INTERNAL "")
+  FetchContent_MakeAvailable(json)
+endif()
 
 # cpp-httplib for AI API (HTTPLIB_INSTALL OFF: dependência interna não deve
 # instalar headers/cmake em /usr/local junto com o aethercli)
