@@ -22,6 +22,7 @@ struct Command {
     // Se true ("args": "append"), tokens extras do usuário são anexados ao
     // comando shell (escapados). Default false: comando não aceita argumentos.
     bool allow_args = false;
+    bool admin_only = false;
     std::vector<Command> subcommands;
 };
 
@@ -171,6 +172,11 @@ private:
                 if (args_policy == "append") cmd.allow_args = true;
                 else if (args_policy == "none") cmd.allow_args = false;
                 else throw std::runtime_error("Error: 'args' must be \"none\" or \"append\" at " + current_context);
+            }
+
+            if (element.contains("admin_only")) {
+                if (!element["admin_only"].is_boolean()) throw std::runtime_error("Error: 'admin_only' must be a boolean at " + current_context);
+                cmd.admin_only = element["admin_only"].get<bool>();
             }
 
             if (element.contains("subcommands")) {

@@ -2,21 +2,34 @@
  * Copyright (c) 2026 caq@intelliurb.com
  */
 #pragma once
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <vector>
 #include <cstdlib>
+#if defined(AETHERCLI_AI_OLLAMA) || defined(AETHERCLI_AI_LLAMACPP)
 #include <nlohmann/json.hpp>
 #include <httplib.h>
+#endif
 #include "CliUtils.hpp"
 #include "CommandParser.hpp"
 
 namespace cli::ai {
+
+inline constexpr const char* AI_REMOTE_HOST_BLOCKED = "__AETHERCLI_AI_REMOTE_HOST_BLOCKED__";
 
 inline std::string getEnvOrDefault(const std::string& var, const std::string& default_val) {
     const char* value = std::getenv(var.c_str());
     return value ? std::string(value) : default_val;
 }
 
+inline bool isLocalAIHost(std::string host) {
+    std::transform(host.begin(), host.end(), host.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]";
+}
+
+#if defined(AETHERCLI_AI_OLLAMA) || defined(AETHERCLI_AI_LLAMACPP)
 inline int getEnvPortOrDefault(const std::string& var, int default_val) {
     const char* value = std::getenv(var.c_str());
     if (!value) return default_val;
@@ -26,24 +39,48 @@ inline int getEnvPortOrDefault(const std::string& var, int default_val) {
         return default_val;
     }
 }
+#endif
 
-// Fala a API OpenAI-compatible (/v1/chat/completions), servida tanto pelo
-// llama.cpp (llama-server) quanto pelo Ollama. Sem AI_PORT definida, sonda
-// primeiro a porta padrão do Ollama (11434) e depois a do llama-server (8080).
+#if defined(AETHERCLI_AI_APPLEINTELLIGENCE)
+inline constexpr const char* APPLE_AI_UNAVAILABLE = "__AETHERCLI_APPLE_AI_UNAVAILABLE__";
+inline constexpr const char* APPLE_AI_ERROR = "__AETHERCLI_APPLE_AI_ERROR__";
+inline constexpr const char* APPLE_AI_TIMEOUT = "__AETHERCLI_APPLE_AI_TIMEOUT__";
+extern "C" char* aethercli_apple_intelligence_ask(const char* instructions, const char* prompt);
+extern "C" void aethercli_apple_intelligence_free(char* response);
+#endif
+
+// Fala a API OpenAI-compatible (/v1/chat/completions) do backend selecionado.
 class AIIntegration {
 public:
-    AIIntegration() : host(getEnvOrDefault("AI_HOST", "localhost")),
-                      port(getEnvPortOrDefault("AI_PORT", 0)), // 0 = auto-probe
-                      model(getEnvOrDefault("AI_MODEL", "default")),
-                      api_key(getEnvOrDefault("AI_API_KEY", "")) {}
+    AIIntegration()
+#if defined(AETHERCLI_AI_OLLAMA)
+        : host(getEnvOrDefault("AI_HOST", "localhost")), port(getEnvPortOrDefault("AI_PORT", 11434)),
+          model(getEnvOrDefault("AI_MODEL", "default")), api_key(getEnvOrDefault("AI_API_KEY", "")) {}
+#elif defined(AETHERCLI_AI_LLAMACPP)
+        : host(getEnvOrDefault("AI_HOST", "localhost")), port(getEnvPortOrDefault("AI_PORT", 8080)),
+          model(getEnvOrDefault("AI_MODEL", "default")), api_key(getEnvOrDefault("AI_API_KEY", "")) {}
+#else
+        {}
+#endif
 
+#if defined(AETHERCLI_AI_OLLAMA) || defined(AETHERCLI_AI_LLAMACPP)
     AIIntegration(const std::string& h, int p, const std::string& m, const std::string& key = "")
         : host(h), port(p), model(m), api_key(key) {}
+#endif
 
     std::string ask(const std::string& prompt, const std::vector<cli::parser::Command>& availableCommands, const std::string& systemInstruction) {
         std::string commandList;
         appendCommandList(availableCommands, "", commandList);
 
+#if defined(AETHERCLI_AI_APPLEINTELLIGENCE)
+        char* response = aethercli_apple_intelligence_ask((systemInstruction + "\nComandos disponíveis:\n" + commandList).c_str(),
+                                                           prompt.c_str());
+        if (!response) return APPLE_AI_ERROR;
+        std::string answer(response);
+        aethercli_apple_intelligence_free(response);
+        return cli::util::stripReasoning(answer);
+#else
+        if (!isLocalAIHost(host)) return AI_REMOTE_HOST_BLOCKED;
         nlohmann::json body = {
             {"model", model},
             {"messages", {
@@ -54,12 +91,9 @@ public:
             {"stream", false}
         };
 
-        std::vector<int> ports = (port > 0) ? std::vector<int>{port}
-                                            : std::vector<int>{11434, 8080};
         std::string lastError;
-        for (int p : ports) {
-            try {
-                httplib::Client cli(host, p);
+        try {
+                httplib::Client cli(host, port);
                 cli.set_connection_timeout(5, 0);
                 cli.set_read_timeout(60, 0); // modelos locais pequenos podem demorar
                 if (!api_key.empty()) {
@@ -68,13 +102,13 @@ public:
 
                 auto res = cli.Post("/v1/chat/completions", body.dump(), "application/json");
                 if (!res) {
-                    lastError = "% Erro: Serviço AI não disponível em " + host + ":" + std::to_string(p);
-                    continue;
+                    lastError = "% Erro: Serviço AI não disponível em " + host + ":" + std::to_string(port);
+                    return lastError;
                 }
                 if (res->status != 200) {
-                    lastError = "% Erro: Serviço AI em " + host + ":" + std::to_string(p) +
+                    lastError = "% Erro: Serviço AI em " + host + ":" + std::to_string(port) +
                                 " retornou status " + std::to_string(res->status);
-                    continue;
+                    return lastError;
                 }
 
                 try {
@@ -89,15 +123,11 @@ public:
                 } catch (const nlohmann::json::exception& e) {
                     return "% Erro ao fazer parse da resposta do AI: " + std::string(e.what());
                 }
-            } catch (const std::exception& e) {
-                lastError = "% Erro ao conectar ao serviço AI: " + std::string(e.what());
-            }
-        }
-        if (ports.size() > 1) {
-            return "% Erro: Nenhum serviço AI em " + host + " (portas testadas: 11434, 8080). "
-                   "Defina AI_HOST/AI_PORT ou inicie o llama-server/Ollama.";
+        } catch (const std::exception& e) {
+            lastError = "% Erro ao conectar ao serviço AI: " + std::string(e.what());
         }
         return lastError;
+#endif
     }
 
 private:
@@ -116,10 +146,12 @@ private:
         }
     }
 
+#if defined(AETHERCLI_AI_OLLAMA) || defined(AETHERCLI_AI_LLAMACPP)
     std::string host;
     int port;
     std::string model;
     std::string api_key;
+#endif
 };
 
 } // namespace cli::ai

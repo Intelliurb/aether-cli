@@ -1,5 +1,6 @@
 #!/bin/bash
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$DIR/scripts/utils.sh"
 GLOBAL_CONFIG="$AETHERCLI_CONFIG"
 USER_CONFIG_DIR="$HOME/.aethercli"
 CONFIG_FILE="$USER_CONFIG_DIR/config.json"
@@ -8,12 +9,12 @@ if [ ! -f "$AETHERCLI_CONFIG" ]; then
     if [ -f "$GLOBAL_CONFIG" ]; then
         CONFIG_FILE="$GLOBAL_CONFIG"
     else
-        echo "Error: config.json not found."
+        echo "$(get_msg "script_config_not_found" "Error: config.json not found.")"
         exit 1
     fi
 fi
 
-echo "Available commands in $CONFIG_FILE:"
+printf '%s %s:\n' "$(get_msg "script_commands_available" "Available commands in")" "$CONFIG_FILE"
 
 jq -r '
   def print_cmds($cmds; $prefix):

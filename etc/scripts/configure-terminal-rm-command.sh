@@ -1,24 +1,16 @@
 #!/bin/bash
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GLOBAL_CONFIG="$AETHERCLI_CONFIG"
-USER_CONFIG_DIR="$HOME/.aethercli"
-CONFIG_FILE="$USER_CONFIG_DIR/config.json"
-
-mkdir -p "$USER_CONFIG_DIR"
-if [ ! -f "$AETHERCLI_CONFIG" ]; then
-    if [ -f "$GLOBAL_CONFIG" ]; then
-        cp "$GLOBAL_CONFIG" "$AETHERCLI_CONFIG"
-    else
-        echo "Error: config.json not found."
-        exit 1
-    fi
-fi
 source "$DIR/scripts/utils.sh"
+
+if [ ! -f "$AETHERCLI_CONFIG" ]; then
+    get_msg "script_config_not_found" "Error: config.json not found."
+    exit 1
+fi
 check_write_permission "$AETHERCLI_CONFIG"
 
 if [ "$#" -ne 1 ]; then
     get_msg "script_rm_cmd_usage" "Usage: rm command <command_path>"
-    echo "  Example: rm command /show/ip"
+    get_msg "script_rm_cmd_example" "  Example: rm command /show/ip"
     exit 1
 fi
 
@@ -36,25 +28,13 @@ fi
 
 EXISTS=$(jq -r --arg path "$CMD_PATH" '
   ($path | sub("^/"; "") | split("/")) as $parts |
-  def check_exists($parts_left; $node):
-    if ($parts_left | length) == 1 then
-      if ($node | type) == "array" then
-        any($node[]; .name == $parts_left[0])
-      else
-        any(.subcommands[]?; .name == $parts_left[0])
-      end
-    else
-      if ($node | type) == "array" then
-        if any($node[]; .name == $parts_left[0]) then
-          check_exists($parts_left[1:]; ($node | map(select(.name == $parts_left[0]))[0]))
-        else false end
-      else
-        if any(.subcommands[]?; .name == $parts_left[0]) then
-          check_exists($parts_left[1:]; (.subcommands | map(select(.name == $parts_left[0]))[0]))
-        else false end
-      end
+  def exists($parts_left; $nodes):
+    if ($parts_left | length) == 0 then true
+    else any($nodes[]?; .name == $parts_left[0] and
+      (if ($parts_left | length) == 1 then true
+       else exists($parts_left[1:]; (.subcommands // [])) end))
     end;
-  check_exists($parts; .commands)
+  exists($parts; .commands)
 ' "$AETHERCLI_CONFIG")
 
 if [ "$EXISTS" != "true" ]; then
@@ -62,7 +42,7 @@ if [ "$EXISTS" != "true" ]; then
     exit 1
 fi
 
-TMP_FILE=$(mktemp)
+TMP_FILE=$(mktemp "$(dirname "$AETHERCLI_CONFIG")/.aethercli-config.XXXXXX") || exit 1
 
 jq --arg path "$CMD_PATH" '
   ($path | sub("^/"; "") | split("/")) as $parts |
@@ -83,10 +63,9 @@ jq --arg path "$CMD_PATH" '
   .commands = (.commands | rm_cmd($parts; .))
 ' "$AETHERCLI_CONFIG" > "$TMP_FILE"
 
-if [ $? -eq 0 ]; then
-    cat "$TMP_FILE" > "$AETHERCLI_CONFIG"
+if [ $? -eq 0 ] && mv "$TMP_FILE" "$AETHERCLI_CONFIG"; then
     get_msg "script_cmd_removed" "Command removed successfully. Run 'reload conf' to apply."
 else
+    rm -f "$TMP_FILE"
     get_msg "script_cmd_error" "Error: Failed to modify config file."
 fi
-rm -f "$TMP_FILE"

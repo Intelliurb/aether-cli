@@ -51,3 +51,13 @@ build/
 
 # macOS
 .DS_Store
+
+# Local credentials and generated development artifacts
+.env
+.env.*
+etc/users.json
+.ua/
+/test_*
+/modify_config.py
+/patch_i18n.py
+/patch_scripts.py

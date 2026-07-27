@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <csignal>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
@@ -14,6 +15,7 @@
 #include <vector>
 #include <termios.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <nlohmann/json.hpp>
 #include "LocalizationManager.hpp"
@@ -340,6 +342,94 @@ public:
         return r;
     }
 
+    static bool upsertUserFile(const std::string& usersFile, const UserRecord& rec,
+                               bool& replaced, bool& recoveredMalformed) {
+        replaced = false;
+        recoveredMalformed = false;
+        nlohmann::json j = {{"users", nlohmann::json::array()}};
+
+        struct stat st {};
+        const bool exists = lstat(usersFile.c_str(), &st) == 0;
+        if (exists && (!S_ISREG(st.st_mode) || S_ISLNK(st.st_mode))) return false;
+        if (!exists && errno != ENOENT) return false;
+
+        if (exists) {
+            std::ifstream in(usersFile);
+            if (!in.is_open()) return false;
+            try {
+                in >> j;
+            } catch (const nlohmann::json::parse_error&) {
+                recoveredMalformed = true;
+            }
+
+            if (!recoveredMalformed && (!j.is_object() || !j.contains("users") || !j["users"].is_array())) {
+                recoveredMalformed = true;
+            }
+            if (!recoveredMalformed) {
+                for (const auto& user : j["users"]) {
+                    if (!user.is_object() || !user.contains("username") || !user["username"].is_string() ||
+                        !user.contains("salt") || !user["salt"].is_string() ||
+                        !user.contains("hash") || !user["hash"].is_string() ||
+                        user["username"].get<std::string>().empty() || fromHex(user["salt"]).empty() ||
+                        fromHex(user["hash"]).size() != 32 || user.value("iterations", DEFAULT_ITERATIONS) == 0) {
+                        recoveredMalformed = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (recoveredMalformed) j = {{"users", nlohmann::json::array()}};
+
+        nlohmann::json entry = {{"username", rec.username},
+                                {"salt", toHex(rec.salt)},
+                                {"hash", toHex(rec.hash)},
+                                {"iterations", rec.iterations}};
+        for (auto& user : j["users"]) {
+            if (user.value("username", "") == rec.username) {
+                user = entry;
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced) j["users"].push_back(entry);
+
+        std::string temp = (std::filesystem::path(usersFile).parent_path() / ".users.json.XXXXXX").string();
+        if (std::filesystem::path(usersFile).parent_path().empty()) temp = "./.users.json.XXXXXX";
+        std::vector<char> tempName(temp.begin(), temp.end());
+        tempName.push_back('\0');
+        const int fd = mkstemp(tempName.data());
+        if (fd == -1) return false;
+
+        const std::string content = j.dump(4) + "\n";
+        size_t written = 0;
+        bool ok = fchmod(fd, 0600) == 0;
+        while (ok && written < content.size()) {
+            const ssize_t n = write(fd, content.data() + written, content.size() - written);
+            if (n > 0) written += static_cast<size_t>(n);
+            else if (n < 0 && errno == EINTR) continue;
+            else ok = false;
+        }
+        if (ok) ok = fsync(fd) == 0;
+        if (close(fd) != 0) ok = false;
+        if (ok) ok = rename(tempName.data(), usersFile.c_str()) == 0;
+        if (!ok) unlink(tempName.data());
+        return ok;
+    }
+
+    static std::string fileSha256(const std::string& path) {
+        std::ifstream file(path, std::ios::binary);
+        if (!file) return {};
+
+        Sha256 sha;
+        std::array<uint8_t, 4096> buffer{};
+        while (file.read(reinterpret_cast<char*>(buffer.data()), buffer.size()) || file.gcount() > 0) {
+            sha.update(buffer.data(), static_cast<size_t>(file.gcount()));
+        }
+        if (file.bad()) return {};
+        auto digest = sha.digest();
+        return toHex(digest.data(), digest.size());
+    }
+
     // Lê uma linha direto do fd 0. Permite ocultar digitação (senha).
     // Aborta instantaneamente e retorna false caso ESC seja pressionado.
     static bool readLineFd(std::string& out, bool hidden = false, const std::string& prompt = "") {
@@ -455,44 +545,24 @@ public:
 
         UserRecord rec = makeRecord(username, p1, pepperFromEnv());
 
-        nlohmann::json j = nlohmann::json::object();
-        {
-            std::ifstream in(usersFile);
-            if (in.is_open()) {
-                try {
-                    in >> j;
-                } catch (const nlohmann::json::parse_error&) {
-                    std::cerr << lang.getOr("auth_err_users_invalid", "%% Error: users file is malformed")
-                              << ": " << usersFile << std::endl;
-                    return false;
-                }
-            }
-        }
-        if (!j.contains("users") || !j["users"].is_array()) j["users"] = nlohmann::json::array();
-
-        nlohmann::json entry = {{"username", rec.username},
-                                {"salt", toHex(rec.salt)},
-                                {"hash", toHex(rec.hash)},
-                                {"iterations", rec.iterations}};
         bool replaced = false;
-        for (auto& u : j["users"]) {
-            if (u.is_object() && u.value("username", "") == username) {
-                u = entry;
-                replaced = true;
-                break;
-            }
-        }
-        if (!replaced) j["users"].push_back(entry);
-
-        std::ofstream out(usersFile);
-        if (!out) {
+        bool recoveredMalformed = false;
+        if (!upsertUserFile(usersFile, rec, replaced, recoveredMalformed)) {
             std::cerr << "%% Error: cannot write " << usersFile << " (" << std::strerror(errno) << ")" << std::endl;
             return false;
         }
-        out << j.dump(4) << std::endl;
-        ::chmod(usersFile.c_str(), 0600); // hashes de senha não devem ser públicos
+        if (recoveredMalformed) {
+            std::cerr << lang.get("auth_err_users_invalid") << ": " << usersFile << std::endl;
+        }
         std::cout << (replaced ? lang.getOr("auth_msg_user_updated", "Updated user '") : lang.getOr("auth_msg_user_added", "Added user '")) << username
                   << lang.getOr("auth_msg_in", "' in ") << usersFile << std::endl;
+        const std::string fileHash = fileSha256(usersFile);
+        if (fileHash.empty()) {
+            std::cerr << lang.getOr("auth_err_users_hash", "%% Error: cannot calculate users file SHA-256")
+                      << ": " << usersFile << std::endl;
+            return false;
+        }
+        std::cout << lang.getOr("auth_msg_users_hash", "Users file SHA-256: ") << fileHash << std::endl;
         return true;
     }
 };

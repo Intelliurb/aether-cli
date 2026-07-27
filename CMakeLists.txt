@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(aethercli VERSION 0.5.0)
+project(aethercli VERSION 0.6.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,6 +13,27 @@ option(ENABLE_ASAN "Enable Address Sanitizer (memory leaks)" OFF)
 option(ENABLE_TSAN "Enable Thread Sanitizer (race conditions)" OFF)
 option(ENABLE_DEBUG "Enable debug info and optimizations" OFF)
 option(AETHERCLI_BUILD_TESTS "Build unit tests" ON)
+option(AI_DISABLED "Omit the ai command from the command tree" OFF)
+option(AI_DISBLED "Deprecated spelling of AI_DISABLED" OFF)
+set(AI_BACKEND "AUTO" CACHE STRING "AI backend: AUTO, OLLAMA, LLAMACPP, or APPLEINTELLIGENCE")
+set_property(CACHE AI_BACKEND PROPERTY STRINGS AUTO OLLAMA LLAMACPP APPLEINTELLIGENCE)
+
+if(AI_DISBLED)
+    set(AI_DISABLED ON)
+endif()
+string(TOUPPER "${AI_BACKEND}" AETHERCLI_AI_BACKEND)
+if(AETHERCLI_AI_BACKEND STREQUAL "AUTO")
+    if(APPLE)
+        set(AETHERCLI_AI_BACKEND "APPLEINTELLIGENCE")
+    else()
+        set(AETHERCLI_AI_BACKEND "OLLAMA")
+    endif()
+endif()
+if(NOT AETHERCLI_AI_BACKEND STREQUAL "OLLAMA" AND
+   NOT AETHERCLI_AI_BACKEND STREQUAL "LLAMACPP" AND
+   NOT AETHERCLI_AI_BACKEND STREQUAL "APPLEINTELLIGENCE")
+    message(FATAL_ERROR "AI_BACKEND must be AUTO, OLLAMA, LLAMACPP, or APPLEINTELLIGENCE")
+endif()
 
 if(ENABLE_DEBUG)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g3")
@@ -42,15 +63,17 @@ if(NOT nlohmann_json_FOUND)
   FetchContent_MakeAvailable(json)
 endif()
 
-# cpp-httplib for AI API (HTTPLIB_INSTALL OFF: dependência interna não deve
-# instalar headers/cmake em /usr/local junto com o aethercli)
-set(HTTPLIB_INSTALL OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-  httplib
-  URL https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.18.7.tar.gz
-  URL_HASH SHA256=b7b1e9e4e77565a5a9bc95e761d5df3e7c0e8ca37c90fd78b1b031bc6cb90fc1
-)
-FetchContent_MakeAvailable(httplib)
+if(NOT AI_DISABLED AND (AETHERCLI_AI_BACKEND STREQUAL "OLLAMA" OR AETHERCLI_AI_BACKEND STREQUAL "LLAMACPP"))
+  # cpp-httplib for the OpenAI-compatible local API (HTTPLIB_INSTALL OFF:
+  # dependency must not install headers/CMake files alongside aethercli).
+  set(HTTPLIB_INSTALL OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(
+    httplib
+    URL https://github.com/yhirose/cpp-httplib/archive/refs/tags/v0.18.7.tar.gz
+    URL_HASH SHA256=b7b1e9e4e77565a5a9bc95e761d5df3e7c0e8ca37c90fd78b1b031bc6cb90fc1
+  )
+  FetchContent_MakeAvailable(httplib)
+endif()
 
 set(SOURCES
     src/main.cpp
@@ -67,8 +90,38 @@ add_executable(aethercli ${SOURCES})
 target_compile_options(aethercli PRIVATE -Wall -Wextra)
 target_link_libraries(aethercli PRIVATE
     nlohmann_json::nlohmann_json
-    httplib::httplib
 )
+
+if(AI_DISABLED)
+    target_compile_definitions(aethercli PRIVATE AETHERCLI_AI_DISABLED)
+elseif(AETHERCLI_AI_BACKEND STREQUAL "OLLAMA")
+    target_compile_definitions(aethercli PRIVATE AETHERCLI_AI_OLLAMA)
+    target_link_libraries(aethercli PRIVATE httplib::httplib)
+elseif(AETHERCLI_AI_BACKEND STREQUAL "LLAMACPP")
+    target_compile_definitions(aethercli PRIVATE AETHERCLI_AI_LLAMACPP)
+    target_link_libraries(aethercli PRIVATE httplib::httplib)
+elseif(AETHERCLI_AI_BACKEND STREQUAL "APPLEINTELLIGENCE")
+    if(NOT APPLE)
+        message(FATAL_ERROR "AI_BACKEND=APPLEINTELLIGENCE requires an Apple platform")
+    endif()
+    find_program(AETHERCLI_SWIFTC swiftc REQUIRED)
+    set(AETHERCLI_APPLE_AI_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/libaethercli_apple_intelligence.dylib")
+    add_custom_command(
+        OUTPUT "${AETHERCLI_APPLE_AI_LIBRARY}"
+        COMMAND "${AETHERCLI_SWIFTC}" -parse-as-library -emit-library
+                -module-name AethercliAppleIntelligence
+                -module-cache-path "${CMAKE_CURRENT_BINARY_DIR}/swift-module-cache"
+                "${CMAKE_CURRENT_SOURCE_DIR}/src/AppleIntelligence.swift"
+                -o "${AETHERCLI_APPLE_AI_LIBRARY}"
+        DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/AppleIntelligence.swift"
+        VERBATIM
+    )
+    add_custom_target(aethercli_apple_intelligence DEPENDS "${AETHERCLI_APPLE_AI_LIBRARY}")
+    add_dependencies(aethercli aethercli_apple_intelligence)
+    target_compile_definitions(aethercli PRIVATE AETHERCLI_AI_APPLEINTELLIGENCE)
+    target_link_libraries(aethercli PRIVATE "${AETHERCLI_APPLE_AI_LIBRARY}")
+    set_target_properties(aethercli PROPERTIES BUILD_RPATH "@loader_path" INSTALL_RPATH "@loader_path")
+endif()
 
 # Passar caminhos e versão para o código-fonte
 target_compile_definitions(aethercli PRIVATE
@@ -80,11 +133,17 @@ target_compile_definitions(aethercli PRIVATE
 # Regras de instalação — permissões explícitas: config editável só pelo dono
 # (quem edita config.json define o que o shell executa).
 install(TARGETS aethercli RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(AETHERCLI_AI_BACKEND STREQUAL "APPLEINTELLIGENCE" AND NOT AI_DISABLED)
+    install(FILES "${AETHERCLI_APPLE_AI_LIBRARY}" DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 install(DIRECTORY etc/ DESTINATION ${AETHERCLI_CONFIG_DIR}
     FILE_PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
     DIRECTORY_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
                           GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
     PATTERN "scripts" EXCLUDE
+    PATTERN "users.json" EXCLUDE
+    PATTERN ".env" EXCLUDE
+    PATTERN ".env.*" EXCLUDE
 )
 install(DIRECTORY etc/scripts/ DESTINATION ${AETHERCLI_CONFIG_DIR}/scripts
     FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
@@ -116,4 +175,6 @@ if(AETHERCLI_BUILD_TESTS)
         nlohmann_json::nlohmann_json
     )
     add_test(NAME unit_tests COMMAND aethercli_tests)
+    add_test(NAME security_integration
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_security_integration.sh $<TARGET_FILE:aethercli>)
 endif()

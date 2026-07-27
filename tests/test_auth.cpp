@@ -134,6 +134,59 @@ TEST_CASE("Auth::loadUsers: erros mapeados na tabela") {
     REQUIRE(err == AuthError::UsersFileInvalid);
 }
 
+TEST_CASE("Auth::upsertUserFile: cria o arquivo e calcula seu SHA-256") {
+    TempUsersFile f("");
+    std::remove(f.path().c_str());
+    const auto rec = Auth::makeRecord("carlos", "senha", "", 10);
+    bool replaced = true;
+    bool recoveredMalformed = true;
+
+    REQUIRE(Auth::upsertUserFile(f.path(), rec, replaced, recoveredMalformed));
+    REQUIRE_FALSE(replaced);
+    REQUIRE_FALSE(recoveredMalformed);
+    REQUIRE(Auth::fileSha256(f.path()).size() == 64);
+
+    AuthError err = AuthError::UsersFileInvalid;
+    const auto users = Auth::loadUsers(f.path(), err);
+    REQUIRE(err == AuthError::None);
+    REQUIRE(users.size() == 1);
+    REQUIRE(users.front().username == "carlos");
+}
+
+TEST_CASE("Auth::upsertUserFile: substitui arquivo malformado pelo novo usuário") {
+    TempUsersFile f("{ malformed");
+    const auto rec = Auth::makeRecord("novo", "senha", "", 10);
+    bool replaced = false;
+    bool recoveredMalformed = false;
+
+    REQUIRE(Auth::upsertUserFile(f.path(), rec, replaced, recoveredMalformed));
+    REQUIRE_FALSE(replaced);
+    REQUIRE(recoveredMalformed);
+
+    AuthError err = AuthError::UsersFileInvalid;
+    const auto users = Auth::loadUsers(f.path(), err);
+    REQUIRE(err == AuthError::None);
+    REQUIRE(users.size() == 1);
+    REQUIRE(users.front().username == "novo");
+}
+
+TEST_CASE("Auth::upsertUserFile: recusa users.json que seja symlink") {
+    TempUsersFile target("{\"users\":[]}");
+    const fs::path link = fs::temp_directory_path() / ("aethercli_auth_link_" + std::to_string(::getpid()));
+    fs::remove(link);
+    fs::create_symlink(target.path(), link);
+
+    bool replaced = false;
+    bool recoveredMalformed = false;
+    const auto rec = Auth::makeRecord("novo", "senha", "", 10);
+    REQUIRE_FALSE(Auth::upsertUserFile(link.string(), rec, replaced, recoveredMalformed));
+    fs::remove(link);
+
+    AuthError err = AuthError::None;
+    Auth::loadUsers(target.path(), err);
+    REQUIRE(err == AuthError::UsersFileInvalid);
+}
+
 TEST_CASE("Tabela de erros: mensagens exigidas pela especificação") {
     REQUIRE(std::string(errorEntry(AuthError::BadCredentials).message) ==
             "cannot log you in, try again");
