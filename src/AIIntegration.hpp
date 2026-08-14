@@ -45,8 +45,13 @@ inline int getEnvPortOrDefault(const std::string& var, int default_val) {
 inline constexpr const char* APPLE_AI_UNAVAILABLE = "__AETHERCLI_APPLE_AI_UNAVAILABLE__";
 inline constexpr const char* APPLE_AI_ERROR = "__AETHERCLI_APPLE_AI_ERROR__";
 inline constexpr const char* APPLE_AI_TIMEOUT = "__AETHERCLI_APPLE_AI_TIMEOUT__";
+extern "C" bool aethercli_apple_intelligence_available();
 extern "C" char* aethercli_apple_intelligence_ask(const char* instructions, const char* prompt);
 extern "C" void aethercli_apple_intelligence_free(char* response);
+
+inline bool isAppleIntelligenceAvailable() {
+    return aethercli_apple_intelligence_available();
+}
 #endif
 
 // Fala a API OpenAI-compatible (/v1/chat/completions) do backend selecionado.

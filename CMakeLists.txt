@@ -35,6 +35,15 @@ if(NOT AETHERCLI_AI_BACKEND STREQUAL "OLLAMA" AND
     message(FATAL_ERROR "AI_BACKEND must be AUTO, OLLAMA, LLAMACPP, or APPLEINTELLIGENCE")
 endif()
 
+if(AETHERCLI_AI_BACKEND STREQUAL "APPLEINTELLIGENCE" AND NOT AI_DISABLED)
+    find_program(AETHERCLI_SWIFTC swiftc)
+    find_library(AETHERCLI_FOUNDATION_MODELS_FRAMEWORK FoundationModels)
+    if(NOT AETHERCLI_SWIFTC OR NOT AETHERCLI_FOUNDATION_MODELS_FRAMEWORK)
+        message(STATUS "Apple Intelligence SDK unavailable; disabling the ai command")
+        set(AI_DISABLED ON)
+    endif()
+endif()
+
 if(ENABLE_DEBUG)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g3")
 endif()
@@ -104,7 +113,6 @@ elseif(AETHERCLI_AI_BACKEND STREQUAL "APPLEINTELLIGENCE")
     if(NOT APPLE)
         message(FATAL_ERROR "AI_BACKEND=APPLEINTELLIGENCE requires an Apple platform")
     endif()
-    find_program(AETHERCLI_SWIFTC swiftc REQUIRED)
     set(AETHERCLI_APPLE_AI_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/libaethercli_apple_intelligence.dylib")
     add_custom_command(
         OUTPUT "${AETHERCLI_APPLE_AI_LIBRARY}"
@@ -112,6 +120,7 @@ elseif(AETHERCLI_AI_BACKEND STREQUAL "APPLEINTELLIGENCE")
                 -module-name AethercliAppleIntelligence
                 -module-cache-path "${CMAKE_CURRENT_BINARY_DIR}/swift-module-cache"
                 "${CMAKE_CURRENT_SOURCE_DIR}/src/AppleIntelligence.swift"
+                -Xlinker -weak_framework -Xlinker FoundationModels
                 -o "${AETHERCLI_APPLE_AI_LIBRARY}"
         DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/AppleIntelligence.swift"
         VERBATIM

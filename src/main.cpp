@@ -918,9 +918,17 @@ Config loadAppConfig(std::string& configFile, bool configOverride, bool langOver
         std::cerr << "% Starting with an empty command set. Use -C <file> to load a configuration." << std::endl;
     } else {
         config = CommandParser::parseConfig(loadFile);
-#ifdef AETHERCLI_AI_DISABLED
-        config.commands.erase(std::remove_if(config.commands.begin(), config.commands.end(),
-            [](const Command& command) { return command.activation == "internal:ai"; }), config.commands.end());
+#if defined(AETHERCLI_AI_DISABLED) || defined(AETHERCLI_AI_APPLEINTELLIGENCE)
+        const bool aiAvailable =
+#ifdef AETHERCLI_AI_APPLEINTELLIGENCE
+            isAppleIntelligenceAvailable();
+#else
+            false;
+#endif
+        if (!aiAvailable) {
+            config.commands.erase(std::remove_if(config.commands.begin(), config.commands.end(),
+                [](const Command& command) { return command.activation == "internal:ai"; }), config.commands.end());
+        }
 #endif
         if (!langOverride && !config.language.empty()) {
             langSource = config.language;

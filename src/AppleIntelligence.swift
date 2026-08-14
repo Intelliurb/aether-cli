@@ -6,6 +6,12 @@ private final class ResponseBox: @unchecked Sendable {
     var value = "__AETHERCLI_APPLE_AI_ERROR__"
 }
 
+@_cdecl("aethercli_apple_intelligence_available")
+public func aethercliAppleIntelligenceAvailable() -> Bool {
+    guard #available(macOS 26.0, *) else { return false }
+    return SystemLanguageModel.default.isAvailable
+}
+
 @_cdecl("aethercli_apple_intelligence_ask")
 public func aethercliAppleIntelligenceAsk(_ instructions: UnsafePointer<CChar>,
                                           _ prompt: UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>? {
