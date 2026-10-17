@@ -31,6 +31,9 @@
 #include "LocalizationManager.hpp"
 #include "Common.hpp"
 #include "SystemStats.hpp"
+#ifdef AETHERCLI_ENABLE_MCP
+#include "McpServer.hpp"
+#endif
 
 namespace fs = std::filesystem;
 using namespace cli::util;
@@ -886,6 +889,9 @@ Config loadAppConfig(std::string& configFile, bool configOverride, bool langOver
 int main(int argc, char* argv[]) {
     std::string langSource = "en", configFile = AETHERCLI_CONFIG, target = "";
     bool headless = false, enableLog = false;
+#ifdef AETHERCLI_ENABLE_MCP
+    bool mcpMode = false;
+#endif
     std::string logPath = "", adduserName = "";
     bool langOverride = false, configOverride = false;
 
@@ -934,6 +940,10 @@ int main(int argc, char* argv[]) {
                 headless = true;
                 target = argv[++i];
             } else optionErrors.push_back(arg);
+#ifdef AETHERCLI_ENABLE_MCP
+        } else if (arg == "--mcp") {
+            mcpMode = true;
+#endif
         } else if (arg == "--adduser") {
             if (i + 1 < argc && argv[i + 1][0] != '-') adduserName = argv[++i];
             else optionErrors.push_back(arg);
@@ -954,6 +964,9 @@ int main(int argc, char* argv[]) {
                   << startupLang.getOr("cli_help_conf", "  -C, --conf       Path to configuration file") << '\n'
                   << startupLang.getOr("cli_help_lang", "  -l, --lang_file  Language code or .json file (default: en)") << '\n'
                   << startupLang.getOr("cli_help_headless", "  -p               Headless mode: execute a single command") << '\n'
+#ifdef AETHERCLI_ENABLE_MCP
+                  << "  --mcp            Model Context Protocol (MCP) stdio server mode" << '\n'
+#endif
                   << startupLang.getOr("cli_help_log", "  --log [path]     Enable logging (optional path)") << '\n'
                   << startupLang.getOr("cli_help_adduser", "  --adduser <name> Add/update a user in users.json (require_authentication)") << std::endl;
         return 0;
@@ -1099,6 +1112,12 @@ int main(int argc, char* argv[]) {
         };
 
         if (!doAuth()) return 1;
+
+#ifdef AETHERCLI_ENABLE_MCP
+        if (mcpMode) {
+            return cli::mcp::runMcpServer(config.commands, lang, configDir, configFile);
+        }
+#endif
 
         if (headless) {
             Context dummy = Context::GLOBAL;

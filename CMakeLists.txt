@@ -13,6 +13,7 @@ option(ENABLE_ASAN "Enable Address Sanitizer (memory leaks)" OFF)
 option(ENABLE_TSAN "Enable Thread Sanitizer (race conditions)" OFF)
 option(ENABLE_DEBUG "Enable debug info and optimizations" OFF)
 option(AETHERCLI_BUILD_TESTS "Build unit tests" ON)
+option(AETHERCLI_ENABLE_MCP "Enable Model Context Protocol (MCP) server mode" OFF)
 
 if(ENABLE_DEBUG)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g3")
@@ -45,6 +46,11 @@ endif()
 set(SOURCES
     src/main.cpp
 )
+
+if(AETHERCLI_ENABLE_MCP)
+    list(APPEND SOURCES src/McpServer.cpp)
+    add_compile_definitions(AETHERCLI_ENABLE_MCP=1)
+endif()
 
 include(GNUInstallDirs)
 
