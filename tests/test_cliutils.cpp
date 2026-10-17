@@ -45,35 +45,6 @@ TEST_CASE("escape_shell_arg: ponto-e-vírgula e pipe ficam literais") {
     REQUIRE(escape_shell_arg("a|b") == "\"a|b\"");
 }
 
-TEST_CASE("stripReasoning: remove bloco <think> e espaços das bordas") {
-    REQUIRE(stripReasoning("<think>hmm, o usuário quer...</think>\n\nshow version") == "show version");
-    REQUIRE(stripReasoning("  \n show version \n ") == "show version");
-    REQUIRE(stripReasoning("show version") == "show version");
-    REQUIRE(stripReasoning("<think>só pensamento</think>") == "");
-    REQUIRE(stripReasoning("<think>sem fechamento... show version") == "<think>sem fechamento... show version");
-}
-
-TEST_CASE("extractCommandSuggestion: primeira linha útil") {
-    REQUIRE(extractCommandSuggestion("show ip route") == "show ip route");
-    REQUIRE(extractCommandSuggestion("\n\n  show version  \n") == "show version");
-    REQUIRE(extractCommandSuggestion("") == "");
-}
-
-TEST_CASE("extractCommandSuggestion: ignora cercas de código e crases") {
-    REQUIRE(extractCommandSuggestion("```\nshow version\n```") == "show version");
-    REQUIRE(extractCommandSuggestion("```bash\nshow files /tmp\n```\nexplicação...") == "show files /tmp");
-    REQUIRE(extractCommandSuggestion("`show version`") == "show version");
-}
-
-TEST_CASE("extractCommandSuggestion: remove prompt decorativo '$ '") {
-    REQUIRE(extractCommandSuggestion("$ show version") == "show version");
-    REQUIRE(extractCommandSuggestion("# show version") == "show version");
-}
-
-TEST_CASE("extractCommandSuggestion: resposta '%' passa adiante para o chamador decidir") {
-    REQUIRE(extractCommandSuggestion("% Nenhum comando disponível para isso.") == "% Nenhum comando disponível para isso.");
-}
-
 TEST_CASE("utf8: navegação por codepoint em texto acentuado") {
     std::string s = "café"; // 'é' ocupa 2 bytes: c a f \xc3 \xa9
     REQUIRE(s.size() == 5);

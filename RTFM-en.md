@@ -25,6 +25,7 @@ With the prefix above, `make install` places:
 - Binary: `/usr/local/bin/aethercli`
 - Configuration: `/usr/local/etc/aethercli/` (`config.json`, language files, macros)
 - Scripts: `/usr/local/etc/aethercli/scripts/` (internal bash scripts)
+- Manual pages (man): `/usr/local/share/man/man1/aethercli.1` (accessed via `man aethercli`)
 
 The default configuration path is baked into the binary at build time (`AETHERCLI_CONFIG` CMake cache variable); override it at runtime with `-C <file>`. You can also configure the default variable files path (used for session locks) via `-DAETHERCLI_VAR_DIR=/path/to/var` at compile time.
 
@@ -51,6 +52,26 @@ If the configuration file does not exist, aethercli prints a warning and starts 
 ```bash
 aethercli -p "show version"
 ```
+
+### Read-Only Global Installation
+For secure shared usage across all system users, install the binary into `/usr/local/bin` with read-and-execute permissions for regular users:
+```bash
+sudo chown root:root /usr/local/bin/aethercli 2>/dev/null || sudo chown root:wheel /usr/local/bin/aethercli
+sudo chmod 0755 /usr/local/bin/aethercli
+```
+
+### Automation Pattern: Wrapper Scripts
+Rather than overloading a single monolithic `config.json` with unrelated utilities, create an executable *wrapper script* for each managed tool or service. Place the wrapper script in a directory in `$PATH` (such as `/usr/local/bin/<app-name>`) and invoke `aethercli` with the `-C` flag pointing to that service's local configuration:
+
+```bash
+#!/bin/sh
+# /usr/local/bin/backup-cli
+set -e
+CONF="/opt/backup-system/etc/config.json"
+exec /usr/local/bin/aethercli -C "$CONF" "$@"
+```
+
+> **Security Warning:** The `config.json` file and its parent directory must be owned strictly by `root` with `0644` permissions (directories `0755`). Whoever edits `config.json` defines the shell commands executed by the host.
 
 ---
 
@@ -84,7 +105,6 @@ AetherCLI reserves specific `activation` strings for internal engine features:
 - `internal:config_mode`: Switches context to configuration mode (`aethercli(config)#`).
 - `internal:run_macro`: Executes a batch of commands from a `.macro` file.
 - `internal:list_macros`: Lists available macro files in the configuration directory.
-- `internal:ai`: Sends the remaining tokens as a natural-language question to the local AI (see section 7).
 
 ### 4.2 Macro System
 Macros are simple text files with the `.macro` extension. Each line is executed as a standard CLI command.
@@ -116,12 +136,25 @@ And then apply all steps automatically by running:
 
 The configuration is **hierarchical**. This allows for organized subcommands, similar to a professional router.
 
+### Configuration Methodology: The Object-Action Paradigm
+When designing command trees in `config.json`, always structure commands following the **Object-Action** paradigm:
+- **Level 1 (Object):** Identifies the target managed resource (e.g. `service`, `database`, `network`, `system`, `user`).
+- **Level 2 (Action):** Specifies the operation to execute on that resource (e.g. `start`, `stop`, `restart`, `status`, `backup`, `list`).
+- **Level 3 / Arguments:** Specific targets, identifiers, or flags.
+
+Why use Object-Action?
+- **Intuitive Discovery:** Operators type `database ?` to immediately view all valid database operations.
+- **Collision-Free Verb Reuse:** Common operations like `status` or `start` can safely co-exist under different objects (`service status` vs `database status`).
+- **Clean Autocompletion:** Keeps the root TAB autocomplete level tidy and uncluttered.
+
 ### Command Object Structure
 - `name`: Command name (used in the terminal). **Required.**
-- `short_desc`: Short description displayed during Double-TAB.
-- `description`: Longer description (used in the AI system prompt).
-- `syntax`: Help text displayed for command details.
+- `abbrev`: (Optional) Explicit canonical abbreviation.
+- `short_desc`: (Optional) Short description displayed during Double-TAB.
+- `description`: (Optional) Extended description or documentation.
+- `syntax`: (Optional) Help text displayed for command details (Triple-TAB).
 - `activation`: Operating system command or internal keyword to be executed.
+- `admin_only`: (Optional) If `true`, restricts execution strictly to the authenticated `admin` user.
 - `args`: `"none"` (default) or `"append"`. With `"append"`, extra user tokens are appended to the `activation` command, each one shell-escaped. With `"none"`, extra tokens are rejected. See section 6.
 - `subcommands`: (Optional) A list of other nested commands.
 
@@ -169,27 +202,7 @@ By default, **logging is disabled** to protect sensitive data.
 
 ---
 
-## 7. AI Integration (llama.cpp / Ollama)
-
-aethercli consults a local AI to suggest commands based on natural language. It speaks the OpenAI-compatible API (`/v1/chat/completions`), which is served both by **llama.cpp** (`llama-server`) and by **Ollama** — no configuration flag needed to pick between them.
-
-- **Usage:** `ai how do I check the routing table`
-- **Workflow:** the AI receives the list of executable commands and must answer with a single command line. Code fences, backticks, and `<think>` blocks in the reply are stripped. If the suggestion resolves to a real command, aethercli asks for confirmation (`Execute '...'? (y/n)`) before running it. In headless mode suggestions are printed but never executed.
-- **Starting a backend with llama.cpp:**
-  ```bash
-  llama-server -m /opt/llm/Qwen3-VL-2B-Instruct-Q4_K_M.gguf --port 8080
-  ```
-- **Configuration (environment variables):**
-  - `AI_HOST` (default `localhost`)
-  - `AI_PORT` (default: probes `11434` (Ollama) then `8080` (llama-server))
-  - `AI_MODEL` (default `default`; llama-server ignores it and uses the loaded model, Ollama requires a valid model name, e.g. `llama3`)
-  - `AI_API_KEY` (optional; sent as `Authorization: Bearer`)
-- **System prompt:** override via the `ai_system_prompt` key in the language file (e.g., `lang_en.json`).
-- Tip: `?` triggers inline help at the prompt, so phrase AI questions without it (or quote it).
-
----
-
-## 8. Authentication and User Management
+## 7. Authentication and User Management
 
 aethercli supports an optional local authentication system.
 

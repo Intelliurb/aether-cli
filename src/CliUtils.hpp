@@ -45,53 +45,6 @@ inline std::string escape_shell_arg(const std::string& arg) {
     return escaped;
 }
 
-// ---- Helpers para respostas de LLM ---------------------------------------
-
-// Remove um bloco <think>...</think> do início da resposta (modelos Qwen em
-// modo thinking) e espaços/linhas em branco nas bordas.
-inline std::string stripReasoning(std::string s) {
-    size_t start = s.find("<think>");
-    if (start != std::string::npos) {
-        size_t end = s.find("</think>", start);
-        if (end != std::string::npos) {
-            s.erase(start, end + 8 - start);
-        }
-    }
-    size_t b = s.find_first_not_of(" \t\r\n");
-    if (b == std::string::npos) return "";
-    size_t e = s.find_last_not_of(" \t\r\n");
-    return s.substr(b, e - b + 1);
-}
-
-// Extrai a primeira linha útil de uma resposta de LLM como candidata a
-// comando: pula linhas vazias e cercas de código (```), e remove crases,
-// "$ " e "# " decorativos que modelos pequenos costumam adicionar.
-inline std::string extractCommandSuggestion(const std::string& answer) {
-    size_t pos = 0;
-    while (pos < answer.size()) {
-        size_t nl = answer.find('\n', pos);
-        std::string line = answer.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
-        pos = (nl == std::string::npos) ? answer.size() : nl + 1;
-
-        size_t b = line.find_first_not_of(" \t\r");
-        if (b == std::string::npos) continue;
-        size_t e = line.find_last_not_of(" \t\r");
-        line = line.substr(b, e - b + 1);
-
-        if (line.rfind("```", 0) == 0) continue; // cerca de código
-
-        while (!line.empty() && line.front() == '`') line.erase(0, 1);
-        while (!line.empty() && line.back() == '`') line.pop_back();
-        if (line.rfind("$ ", 0) == 0 || line.rfind("# ", 0) == 0) line.erase(0, 2);
-
-        b = line.find_first_not_of(" \t");
-        if (b == std::string::npos) continue;
-        e = line.find_last_not_of(" \t");
-        return line.substr(b, e - b + 1);
-    }
-    return "";
-}
-
 // ---- Helpers UTF-8 -------------------------------------------------------
 // O buffer de edição guarda bytes; o cursor precisa andar por codepoint para
 // não parar no meio de um caractere acentuado.

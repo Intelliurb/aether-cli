@@ -1,6 +1,6 @@
 # aethercli
 
-**aethercli** is a Cisco IOS–style interactive shell for system and application administration. It is not a fixed set of built-in commands: each application (or deployment) supplies its own hierarchical command tree in a `config.json`, mapping phrases such as `show ip route` to activations (shell commands or scripts). Optional macros, localization, authentication, and local AI suggestions build on that tree.
+**aethercli** is a Cisco IOS–style interactive shell for system and application administration. It is not a fixed set of built-in commands: each application (or deployment) supplies its own hierarchical command tree in a `config.json`, mapping phrases such as `show ip route` to activations (shell commands or scripts). Optional macros, localization, and authentication build on that tree.
 
 If you start the binary without a configuration file for your application, the command set is empty by design (aside from built-ins such as `exit` / `quit` and `?`). Point `-C` at the application’s config, or install under the default path baked in at build time.
 
@@ -36,6 +36,7 @@ With that prefix, install places roughly:
 
 - Binary: `/usr/local/bin/aethercli`
 - Configuration and scripts: `/usr/local/etc/aethercli/` (`config.json`, `lang_*.json`, `scripts/`, …)
+- Manual pages (man): `/usr/local/share/man/man1/aethercli.1` (`man aethercli`)
 
 The default config path is compiled in as `AETHERCLI_CONFIG`. Override at runtime with `-C`, or at build time with `-DAETHERCLI_CONFIG=...` / `-DAETHERCLI_CONFIG_DIR=...`.
 
@@ -74,9 +75,10 @@ Inside the shell: type `?` or press TAB twice to explore the tree loaded from th
 
 | Document | Content |
 |---|---|
-| [RTFM-en.md](RTFM-en.md) | Full manual (English): install paths, TAB/`?`, macros, auth, AI, config schema |
+| [RTFM-en.md](RTFM-en.md) | Full manual (English): install paths, TAB/`?`, macros, auth, config schema |
 | [RTFM-pt.md](RTFM-pt.md) | Manual completo (português) |
 | [RTFM.md](RTFM.md) | Macro section (Portuguese); prefer RTFM-en / RTFM-pt for the full guide |
+| [man/man1/aethercli.1](man/man1/aethercli.1) | UNIX man page (`man aethercli`): installation, wrapper pattern, object-action schema |
 | [AGENTS.md](AGENTS.md) | Notes for automated agents working on this repository |
 
 ## License

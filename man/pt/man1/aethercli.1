@@ -1,0 +1,487 @@
+.\" Process this file with:
+.\" mandoc -a aethercli.1
+.\" or:
+.\" man ./aethercli.1
+.TH AETHERCLI 1 "2026-10-17" "aethercli 0.6.0" "Manual do Administrador do Sistema"
+.SH NOME
+aethercli \- interface CLI para automação de sistemas e despacho de comandos
+.SH SINOPSE
+\fBaethercli\fR [\fB\-C\fR \fIconfig_file\fR] [\fB\-l\fR \fIlang\fR] [\fB\-\-log\fR [\fIpath\fR]]
+.br
+\fBaethercli\fR \fB\-p\fR "\fIcomando\fR" [\fB\-C\fR \fIconfig_file\fR] [\fB\-l\fR \fIlang\fR] [\fB\-\-log\fR [\fIpath\fR]]
+.br
+\fBaethercli\fR \fB\-\-adduser\fR \fInome\fR [\fB\-C\fR \fIconfig_file\fR]
+.br
+\fBaethercli\fR \fB\-h\fR | \fB\-\-help\fR
+.br
+\fBaethercli\fR \fB\-v\fR | \fB\-\-version\fR
+.SH DESCRIÇÃO
+O \fBaethercli\fR é um utilitário de terminal em linha de comando projetado
+para servir como uma camada unificada, ergonômica e auditável de interface
+para tarefas de automação de infraestrutura e administração de sistemas.
+Inspirado na usabilidade de shells de rede (como o Cisco IOS), o programa
+oferece navegação interativa em tempo real, autocompletar via TAB, consulta
+imediata de opções através da interrogação (\fB?\fR), histórico de comandos
+persistente e validação preventiva de parâmetros antes de despachar a
+execução para binários ou scripts subjacentes do sistema operacional.
+
+A ferramenta é orientada a dados: sua árvore de comandos é definida
+integralmente em formato JSON (\fBconfig.json\fR). O binário é independente
+de aplicações específicas, permitindo ser instalado centralizadamente de
+forma estática e compartilhada, enquanto cada aplicação ou serviço define
+suas próprias regras de navegação e automação.
+
+.SH INSTALAÇÃO EM SOMENTE LEITURA (ACESSO COMPARTILHADO)
+A arquitetura recomendada de implantação consiste em instalar o binário
+executável do \fBaethercli\fR em um diretório global do sistema operacional
+(como \fI/usr/local/bin\fR), configurando propriedade de superusuário
+(\fBroot\fR) e permissão de somente leitura e execução para os demais
+usuários (\fB0755\fR).
+Dessa maneira, qualquer usuário ou processo de serviço pode invocar o
+utilitário, impedindo que usuários não privilegiados modifiquem, substituam
+ou adulterem o binário.
+
+.SS 1. Compilação a partir do código-fonte
+Compile o projeto com C++17 e otimizações de lançamento:
+.PP
+.nf
+mkdir \-p build
+cd build
+cmake \-DCMAKE_BUILD_TYPE=Release \-DCMAKE_INSTALL_PREFIX=/usr/local ..
+make \-j$(nproc 2>/dev/null || sysctl \-n hw.ncpu 2>/dev/null || echo 2)
+.fi
+
+.SS 2. Instalação e atribuição de permissões estritas
+Execute o processo de instalação como \fBroot\fR:
+.PP
+.nf
+sudo make install
+.fi
+.PP
+Em seguida, certifique-se de que a propriedade e as permissões de acesso
+do binário garantam execução por todos e escrita apenas pelo administrador:
+.PP
+.nf
+# Define o proprietário como root
+sudo chown root:root /usr/local/bin/aethercli 2>/dev/null || \\
+    sudo chown root:wheel /usr/local/bin/aethercli
+
+# Modo 0755: rwxr-xr-x (leitura e execução global; escrita apenas root)
+sudo chmod 0755 /usr/local/bin/aethercli
+.fi
+.PP
+Se arquivos globais forem mantidos em \fI/usr/local/etc/aethercli\fR,
+defina igualmente permissões estritas de somente leitura:
+.PP
+.nf
+sudo chmod 0755 /usr/local/etc/aethercli
+sudo chmod 0644 /usr/local/etc/aethercli/config.json 2>/dev/null || true
+sudo chmod 0755 /usr/local/etc/aethercli/scripts 2>/dev/null || true
+sudo chmod 0755 /usr/local/etc/aethercli/scripts/*.sh 2>/dev/null || true
+.fi
+
+.SH ARQUITETURA DE AUTOMAÇÃO: PADRÃO DE SCRIPTS WRAPPER
+Em ambientes de automação com múltiplos programas, ferramentas ou rotinas,
+a melhor prática consiste em manter o binário \fBaethercli\fR centralizado
+e imutável, criando para cada aplicação um \fIscript wrapper\fR leve.
+
+O fluxo de funcionamento do wrapper é o seguinte:
+.IP \(bu 3
+O script wrapper reside em um diretório acessível do \fB$PATH\fR
+(por exemplo, \fI/usr/local/bin/<nome-app>\fR).
+.IP \(bu 3
+O script armazena ou referencia o arquivo \fBconfig.json\fR local específico
+daquela aplicação (por exemplo, \fI/opt/<app>/etc/config.json\fR).
+.IP \(bu 3
+O script invoca \fI/usr/local/bin/aethercli\fR repassando a opção
+\fB\-C\fR com o caminho da configuração local e propagando os argumentos
+recebidos (\fB"$@"\fR).
+
+.SS Segurança do Script Wrapper
+IMPORTANTE: O arquivo \fBconfig.json\fR de cada aplicação e o diretório onde
+ele reside devem pertencer exclusivamente ao usuário administrativo (\fBroot\fR)
+com permissões \fB0644\fR (diretórios \fB0755\fR). Quem edita o arquivo de
+configuração define os comandos que o sistema operacional executa; permitir
+que usuários não privilegiados editem esse arquivo criaria um vetor de
+execução arbitrária de código.
+
+.SS Exemplo de Script Wrapper
+Crie o arquivo \fI/usr/local/bin/backup-cli\fR:
+.PP
+.nf
+#!/bin/sh
+# Wrapper de automacao para o modulo de backups
+set \-e
+
+CONF="/opt/backup-system/etc/config.json"
+
+if [ ! \-r "$CONF" ]; then
+    echo "Erro: configuracao $CONF nao encontrada ou ilegivel." >&2
+    exit 1
+fi
+
+exec /usr/local/bin/aethercli \-C "$CONF" "$@"
+.fi
+.PP
+Conceda permissão de execução:
+.PP
+.nf
+sudo chown root:root /usr/local/bin/backup-cli 2>/dev/null || true
+sudo chmod 0755 /usr/local/bin/backup-cli
+.fi
+.PP
+Com este wrapper, a aplicação pode ser executada de forma interativa ou em
+rotinas de automação (crontab, CI/CD, scripts bash):
+.PP
+.nf
+# Uso interativo com autocompletar e ajuda:
+backup-cli
+
+# Uso em automacao (modo headless):
+backup-cli \-p "database backup"
+.fi
+
+.SH METODOLOGIA DE CONFIGURAÇÃO: O PARADIGMA OBJETO-AÇÃO
+Ao criar arquivos de configuração para o \fBaethercli\fR, utilize sempre
+o paradigma \fBObjeto-Ação\fR.
+
+.SS O problema da abordagem Ação-Primeiro (Verbo-Primeiro)
+Quando uma interface CLI é projetada colocando verbos no primeiro nível
+(por exemplo: \fBstart-app\fR, \fBstop-app\fR, \fBbackup-db\fR,
+\fBcheck-disk\fR), o namespace inicial torna-se caótico. O usuário precisa
+adivinhar qual verbo foi escolhido pelo autor da ferramenta, e o menu
+inicial de opções perde coesão funcional.
+
+.SS A solução Objeto-Ação
+No modelo Objeto-Ação, o primeiro nível hierárquico sempre identifica o
+\fBObjeto\fR (a entidade ou recurso sobre o qual se deseja atuar). O segundo
+nível hierárquico especifica a \fBAção\fR (a operação que deve ser executada
+sobre aquele recurso).
+
+.IP \(bu 3
+\fBNível 1 (Objeto):\fR \fIservice\fR, \fIdatabase\fR, \fInetwork\fR, \fIsystem\fR, \fIconfig\fR.
+.IP \(bu 3
+\fBNível 2 (Ação):\fR \fIstart\fR, \fIstop\fR, \fIrestart\fR, \fIstatus\fR, \fIbackup\fR, \fIreload\fR.
+.IP \(bu 3
+\fBNível 3 / Argumentos:\fR instâncias específicas, nomes de tabelas ou parâmetros.
+
+.SS Por que o modelo Objeto-Ação simplifica a configuração?
+.IP \(bu 3
+\fBModularidade e Agrupamento:\fR Cada recurso forma um bloco autossuficiente
+no JSON. Acrescentar uma nova ação a um serviço exige apenas adicionar uma
+entrada no array de subcomandos daquele objeto.
+.IP \(bu 3
+\fBDescoberta Guiada:\fR O usuário digita \fBdatabase ?\fR e o terminal
+exibe imediatamente apenas as ações aplicáveis a bancos de dados.
+.IP \(bu 3
+\fBReutilização Sem Colisão:\fR Nomes comuns como \fBstatus\fR, \fBstart\fR
+ou \fBlist\fR podem ser repetidos sob objetos distintos sem gerar ambiguidades
+(\fBservice status\fR versus \fBdatabase status\fR).
+.IP \(bu 3
+\fBAutocompletar Eficiente:\fR Reduz a árvore de busca inicial do TAB,
+garantindo resolução rápida de prefixos unívocos.
+
+.SH ESTRUTURA DO ARQUIVO DE CONFIGURAÇÃO (JSON)
+O arquivo de configuração utiliza a sintaxe JSON padrão.
+
+.SS Propriedades Globais
+.TP
+.B "motd" \fR(string, opcional)
+Mensagem de boas-vindas apresentada na abertura da sessão interativa.
+.TP
+.B "config_version" \fR(string, opcional)
+Identificador de versão da configuração exibido no cabeçalho.
+.TP
+.B "scripts_dir" \fR(string, opcional)
+Diretório base onde se localizam scripts complementares. Se for relativo,
+é calculado a partir da pasta do arquivo \fBconfig.json\fR.
+.TP
+.B "language" \fR(string, opcional)
+Código de idioma (\fBen\fR ou \fBpt\fR). Padrão: \fBen\fR.
+.TP
+.B "status_bar" \fR(booleano, opcional)
+Se \fBtrue\fR, ativa a barra de métricas em tempo real na base do terminal.
+.TP
+.B "require_authentication" \fR(booleano, opcional)
+Define se o acesso requer validação de senha cadastrada no arquivo de usuários.
+.TP
+.B "restricted_session" \fR(booleano, opcional)
+Se \fBtrue\fR, impede que o mesmo usuário mantenha múltiplas sessões ativas
+simultâneas através de locks POSIX.
+.TP
+.B "number_auth_fail" \fR(inteiro, opcional)
+Número de tentativas incorretas de senha antes de desconectar (padrão: 3).
+.TP
+.B "passwd-file" \fR(string, opcional)
+Nome ou caminho do arquivo com os hashes criptográficos (\fBusers.json\fR).
+.TP
+.B "commands" \fR(array, obrigatório)
+Lista de nós e objetos que compõem a árvore de comandos disponíveis.
+
+.SS Propriedades de Cada Comando / Subcomando
+.TP
+.B "name" \fR(string, obrigatório)
+Token textual do comando digitado no prompt.
+.TP
+.B "abbrev" \fR(string, opcional)
+Abreviação canônica explícita para o comando (além dos prefixos únicos automáticos).
+.TP
+.B "short_desc" \fR(string, opcional)
+Descrição sumária apresentada na listagem de ajuda e autocompletar duplo-TAB.
+.TP
+.B "description" \fR(string, opcional)
+Descrição longa ou documentação detalhada do comando.
+.TP
+.B "syntax" \fR(string, opcional)
+Instrução de sintaxe apresentada na ajuda detalhada (triplo TAB).
+.TP
+.B "activation" \fR(string, opcional em nós intermediários)
+Linha de comando do sistema operacional a ser despachada. Pode apontar para
+um binário do sistema, um script ou uma chamada interna reservada
+(\fBinternal:reload\fR, \fBinternal:run_macro\fR, \fBinternal:config_mode\fR).
+.TP
+.B "admin_only" \fR(booleano, opcional)
+Se \fBtrue\fR, restringe a execução exclusivamente ao usuário autenticado "admin".
+.TP
+.B "args" \fR(string, padrão "none")
+Quando definido como \fB"append"\fR, tokens sobressalentes digitados após o
+comando são higienizados e anexados à execução. Se \fB"none"\fR, argumentos
+não previstos na árvore são bloqueados com erro de sintaxe.
+.TP
+.B "subcommands" \fR(array de objetos, opcional)
+Lista aninhada contendo as ações ou sub-recursos do objeto.
+
+.SH EXEMPLO COMPLETO DE CONFIGURAÇÃO OBJETO-AÇÃO
+O modelo abaixo demonstra uma configuração completa e padronizada no formato
+Objeto-Ação:
+
+.PP
+.nf
+{
+  "motd": "Central de Automacao de Servicos\\nDigite '?' para comandos.\\n",
+  "config_version": "1.0",
+  "scripts_dir": "scripts",
+  "require_authentication": false,
+  "status_bar": false,
+  "commands": [
+    {
+      "name": "service",
+      "short_desc": "Gerenciamento de servicos do sistema",
+      "subcommands": [
+        {
+          "name": "start",
+          "short_desc": "Iniciar um servico",
+          "activation": "systemctl start --",
+          "syntax": "service start <nome>",
+          "args": "append"
+        },
+        {
+          "name": "stop",
+          "short_desc": "Parar um servico",
+          "activation": "systemctl stop --",
+          "syntax": "service stop <nome>",
+          "args": "append"
+        },
+        {
+          "name": "restart",
+          "short_desc": "Reiniciar um servico",
+          "activation": "systemctl restart --",
+          "syntax": "service restart <nome>",
+          "args": "append"
+        },
+        {
+          "name": "status",
+          "short_desc": "Verificar status de execucao",
+          "activation": "systemctl status --",
+          "syntax": "service status <nome>",
+          "args": "append"
+        }
+      ]
+    },
+    {
+      "name": "database",
+      "short_desc": "Operacoes sobre a base de dados",
+      "subcommands": [
+        {
+          "name": "backup",
+          "short_desc": "Gerar copia de seguranca da base",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/db-backup.sh",
+          "syntax": "database backup"
+        },
+        {
+          "name": "status",
+          "short_desc": "Exibir conexoes e latencia",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/db-status.sh",
+          "syntax": "database status"
+        },
+        {
+          "name": "optimize",
+          "short_desc": "Executar rotina de otimizacao",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/db-optimize.sh",
+          "syntax": "database optimize"
+        }
+      ]
+    },
+    {
+      "name": "system",
+      "short_desc": "Monitoramento de recursos do servidor",
+      "subcommands": [
+        {
+          "name": "disk",
+          "short_desc": "Uso de sistemas de arquivos",
+          "activation": "df \-h",
+          "syntax": "system disk"
+        },
+        {
+          "name": "memory",
+          "short_desc": "Consumo de memoria do host",
+          "activation": "free \-m 2>/dev/null || vm_stat",
+          "syntax": "system memory"
+        }
+      ]
+    },
+    {
+      "name": "config",
+      "short_desc": "Operacoes sobre a configuracao do aethercli",
+      "subcommands": [
+        {
+          "name": "reload",
+          "short_desc": "Recarrega config.json e idiomas na memoria",
+          "activation": "internal:reload",
+          "syntax": "config reload"
+        }
+      ]
+    }
+  ]
+}
+.fi
+
+.SH OPÇÕES
+.TP
+\fB\-C\fR \fIarquivo\fR, \fB\-\-conf\fR \fIarquivo\fR
+Informa o arquivo de configuração a ser lido. Caso omitido, busca em
+\fI~/.aethercli/config.json\fR ou no padrão definido durante a compilação.
+.TP
+\fB\-p\fR "\fIcomando\fR"
+Modo headless (não interativo). Executa o comando especificado de forma
+direta, imprime a saída padrão e encerra o processo com o status retornado.
+.TP
+\fB\-l\fR \fIidioma\fR, \fB\-\-lang_file\fR \fIidioma\fR
+Especifica o código do idioma (\fBen\fR, \fBpt\fR) ou o caminho direto para um
+arquivo de dicionário JSON.
+.TP
+\fB\-\-log\fR [\fIcaminho\fR]
+Ativa registro de auditoria dos comandos executados. Se nenhum arquivo for
+indicado, grava por padrão em \fI~/.aethercli/log/aethercli.log\fR.
+.TP
+\fB\-\-adduser\fR \fInome\fR
+Inicia rotina interativa de cadastro ou atualização de senha de usuário no
+arquivo de credenciais (\fBusers.json\fR).
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Exibe resumo de opções e encerra.
+.TP
+\fB\-v\fR, \fB\-\-version\fR
+Exibe a versão do programa e encerra.
+
+.SH NAVEGAÇÃO E RECURSOS INTERATIVOS
+.IP \(bu 3
+\fBAutocompletar (TAB 1x):\fR Completa o token até o prefixo comum mais longo.
+Tokens exclusivos ganham espaço final automaticamente.
+.IP \(bu 3
+\fBExibição de Opções (TAB 2x):\fR Lista todos os subcomandos e opções do nível.
+.IP \(bu 3
+\fBAjuda de Sintaxe (TAB 3x):\fR Lista as opções acompanhadas do modelo de sintaxe.
+.IP \(bu 3
+\fBAjuda Rápida (?):\fR Ao digitar \fB?\fR fora de aspas, a lista de opções do
+nível atual é exibida instantaneamente sem necessidade de pressionar ENTER.
+.IP \(bu 3
+\fBPrefixos Únicos:\fR Qualquer abreviação não ambígua é executada normalmente
+(ex: \fBserv sta\fR executa \fBservice start\fR).
+.IP \(bu 3
+\fBAtalhos de Edição:\fR \fBCtrl+A\fR (início), \fBCtrl+E\fR (fim), \fBCtrl+K\fR
+(apaga até o fim), \fBCtrl+U\fR (apaga até o início), \fBCtrl+W\fR (apaga palavra
+anterior) e \fBCtrl+L\fR (limpa tela).
+.IP \(bu 3
+\fBHistórico de Sessão:\fR Navegável pelas setas Cima/Baixo e gravado em
+\fI~/.aethercli/history\fR com permissão restrita \fB0600\fR.
+.IP \(bu 3
+\fBRecarga a Quente:\fR A ativação interna \fBinternal:reload\fR recarrega o arquivo
+JSON de configuração diretamente na memória sem reiniciar o terminal.
+
+.SH STATUS DE SAÍDA
+O \fBaethercli\fR retorna os seguintes códigos de término para o shell:
+.TP
+.B 0
+Execução concluída com sucesso.
+.TP
+.B 1
+Erro fatal de inicialização, falha de autenticação ou interrupção de execução.
+.TP
+.B 2
+Erro de validação ou argumentos incorretos nas opções da linha de comando.
+.TP
+.B 127
+Comando executado não encontrado no sistema operacional.
+.TP
+.B 128+N
+Comando terminado pelo sinal UNIX \fIN\fR (ex: 130 para SIGINT/Ctrl+C).
+
+.SH SEGURANÇA
+.IP \(bu 3
+\fBEscapamento de Argumentos:\fR Argumentos repassados ao sistema operacional
+são individualmente escapados, prevenindo injeções de metacaracteres shell
+(como ponto e vírgula, pipes ou redirecionamentos não autorizados).
+.IP \(bu 3
+\fBBloqueio de Injeção de Opções (-):\fR Parâmetros adicionais que comecem com
+\fB\-\fR são bloqueados preventivamente, a menos que a string \fBactivation\fR
+da configuração termine explicitamente com o marcador de fim de opções \fB\ \-\-\fR.
+.IP \(bu 3
+\fBLimite Rígido de Entrada:\fR O comprimento máximo da linha de comando é
+limitado a 4096 bytes para prevenir saturação de buffer.
+.IP \(bu 3
+\fBIntegridade da Configuração:\fR Manter arquivos \fBconfig.json\fR graváveis
+apenas por administradores (\fB0644 root\fR) é essencial para impedir elevação
+de privilégios em ambientes restritos.
+
+.SH ARQUIVOS
+.TP
+.I /usr/local/bin/aethercli
+Binário executável instalado no sistema.
+.TP
+.I /usr/local/etc/aethercli/config.json
+Arquivo de configuração mestre global.
+.TP
+.I ~/.aethercli/config.json
+Arquivo de configuração local do usuário.
+.TP
+.I ~/.aethercli/history
+Arquivo de histórico de comandos da sessão.
+.TP
+.I ~/.aethercli/log/aethercli.log
+Arquivo de log padrão para auditoria de execuções.
+
+.SH AMBIENTE
+.TP
+.B AETHERCLI_CONFIG
+Contém o caminho absoluto do arquivo de configuração em uso pelo processo.
+.TP
+.B AETHERCLI_SCRIPTS_DIR
+Contém o caminho do diretório onde os scripts de automação são localizados.
+.TP
+.B AETHERCLI_USER
+Identifica o usuário autenticado da sessão.
+.TP
+.B AETHERCLI_LANG
+Indica o código do idioma carregado pela interface.
+.TP
+.B AETHERCLI_PEPPER
+Chave adicional usada no cálculo criptográfico do PBKDF2 para senhas locais.
+
+.SH VEJA TAMBÉM
+.BR bash (1),
+.BR systemctl (1),
+.BR jq (1)
+
+.SH AUTOR
+Desenvolvido por caq@intelliurb.com para IntelliUrb.

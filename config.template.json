@@ -1,0 +1,41 @@
+{
+  "//_1": "Mensagem do dia, exibida ao iniciar o shell.",
+  "motd": "Welcome to AetherCLI - Advanced Management Shell\nType '?' or double-tab for help.\n",
+  
+  "//_config_version": "Versão da configuração, impressa após o motd.",
+  "config_version": "1.0",
+  
+  "//_2": "Diretório onde os scripts (.sh) serão procurados, se não for caminho absoluto.",
+  "scripts_dir": "scripts",
+
+  "//_3": "Se true, exige autenticação contra o arquivo passwd-file (ou users.json por default).",
+  "require_authentication": false,
+
+  "//_4": "Se true, impede que um usuário tenha mais de uma sessão ativa simultaneamente.",
+  "restricted_session": false,
+
+  "//_5": "Número máximo de falhas de autenticação permitidas antes de desconectar.",
+  "number_auth_fail": 3,
+
+  "//_6": "Arquivo contendo as hashes de senhas. Se omitido, usa users.json no diretório de configuração.",
+  "passwd-file": "users.json",
+
+  "//_7": "Ativa ou desativa a exibição da barra de status na parte inferior.",
+  "status_bar": false,
+
+  "//_8": "Idioma do shell (en, pt, etc). Precisa ter o arquivo lang_<idioma>.json correspondente.",
+  "language": "en",
+
+  "//_9": "Árvore de comandos. Cada nó pode ter 'name', 'abbrev', 'short_desc', 'activation', 'syntax', 'args' e 'subcommands'.",
+  "commands": [
+    {
+      "name": "exemplo",
+      "abbrev": "ex",
+      "short_desc": "Comando de exemplo",
+      "description": "Uma descrição mais longa se necessário.",
+      "activation": "echo 'olá'",
+      "syntax": "exemplo",
+      "args": "append"
+    }
+  ]
+}

@@ -261,13 +261,6 @@
       ]
     },
     {
-      "name": "ai",
-      "short_desc": "Perguntar à IA local (Ollama)",
-      "activation": "internal:ai",
-      "syntax": "ai <pergunta em linguagem natural>",
-      "args": "append"
-    },
-    {
       "name": "reload",
       "short_desc": "Recarregar configurações",
       "subcommands": [

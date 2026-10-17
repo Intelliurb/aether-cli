@@ -25,9 +25,6 @@
 #include "Completer.hpp"
 #include "CommandParser.hpp"
 #include "CommandExecutor.hpp"
-#ifndef AETHERCLI_AI_DISABLED
-#include "AIIntegration.hpp"
-#endif
 #include "MacroEngine.hpp"
 #include "Auth.hpp"
 #include "Logger.hpp"
@@ -39,9 +36,6 @@ namespace fs = std::filesystem;
 using namespace cli::util;
 using namespace cli::parser;
 using namespace cli::executor;
-#ifndef AETHERCLI_AI_DISABLED
-using namespace cli::ai;
-#endif
 using namespace cli::macro;
 using namespace cli::auth;
 using namespace cli::log;
@@ -341,60 +335,6 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
         std::cout << "\n% " << lang.getOr("reloading_conf", "Reloading configuration...") << std::endl;
         throw ReloadException();
     }
-
-#ifndef AETHERCLI_AI_DISABLED
-    if (cmd.activation == "internal:ai") {
-        std::string question;
-        for (size_t i = depth; i < tokens.size(); ++i) {
-            if (!question.empty()) question += " ";
-            question += tokens[i];
-        }
-        if (question.empty()) {
-            std::cout << withValue(lang.getOr("ai_err_usage", "%% Error: Usage: _VALUE_"), cmd.syntax.empty() ? "ai <question>" : cmd.syntax) << std::endl;
-            return true;
-        }
-
-        static const std::string default_ai_prompt =
-            "You are an assistant embedded in aethercli, a Cisco IOS-style management shell. "
-            "Reply with EXACTLY ONE command line chosen from the available commands below that "
-            "best answers the user's request, and nothing else. If no command applies, reply "
-            "with one short sentence starting with '%'.";
-
-        AIIntegration ai;
-        std::cout << lang.getOr("ai_msg_consulting", "% Consulting AI...") << std::endl;
-        std::string answer = ai.ask(question, tree, lang.getOr("ai_system_prompt", default_ai_prompt));
-        if (answer == AI_REMOTE_HOST_BLOCKED) answer = lang.getOr("ai_err_remote_host", "%% Error: AI_HOST must be a local address; remote HTTP is not supported.");
-#ifdef AETHERCLI_AI_APPLEINTELLIGENCE
-        if (answer == APPLE_AI_UNAVAILABLE) answer = lang.get("ai_err_apple_unavailable");
-        if (answer == APPLE_AI_ERROR) answer = lang.get("ai_err_apple_request");
-        if (answer == APPLE_AI_TIMEOUT) answer = lang.getOr("ai_err_apple_timeout", "%% Apple Intelligence request timed out.");
-#endif
-        std::cout << answer << std::endl;
-
-        // Primeira linha útil da resposta (sem cercas de código/crases) é a
-        // candidata a comando.
-        std::string suggestion = extractCommandSuggestion(answer);
-        if (suggestion.empty() || suggestion[0] == '%') return true;
-
-        auto sres = cli::completer::resolve(tree, split(suggestion));
-        bool executable = sres.cmd && !sres.cmd->activation.empty() &&
-                          sres.cmd->activation.rfind("internal:", 0) != 0;
-        if (!executable) return true;
-
-        if (global_orig_termios) { // loop interativo: pedir confirmação
-            TerminalRestorer restorer(global_orig_termios);
-            std::cout << withValue(lang.getOr("ai_msg_confirm", "Execute '_VALUE_'? (y/n) "), suggestion) << std::flush;
-            std::string reply;
-            if (std::getline(std::cin, reply) &&
-                (reply == "y" || reply == "Y" || reply == "yes" || reply == "s" || reply == "sim")) {
-                return executeCommand(suggestion, tree, lang, ctx, configDir, macro_depth, prompt);
-            }
-        } else {
-            std::cout << lang.getOr("ai_msg_headless", "% (suggestion not executed: no interactive confirmation available)") << std::endl;
-        }
-        return true;
-    }
-#endif
 
     if (cmd.activation.rfind("internal:", 0) == 0) {
         std::cout << withValue(lang.getOr("cli_err_internal_activation", "%% Error: Unrecognized internal activation: _VALUE_"), cmd.activation) << std::endl;
@@ -918,18 +858,6 @@ Config loadAppConfig(std::string& configFile, bool configOverride, bool langOver
         std::cerr << "% Starting with an empty command set. Use -C <file> to load a configuration." << std::endl;
     } else {
         config = CommandParser::parseConfig(loadFile);
-#if defined(AETHERCLI_AI_DISABLED) || defined(AETHERCLI_AI_APPLEINTELLIGENCE)
-        const bool aiAvailable =
-#ifdef AETHERCLI_AI_APPLEINTELLIGENCE
-            isAppleIntelligenceAvailable();
-#else
-            false;
-#endif
-        if (!aiAvailable) {
-            config.commands.erase(std::remove_if(config.commands.begin(), config.commands.end(),
-                [](const Command& command) { return command.activation == "internal:ai"; }), config.commands.end());
-        }
-#endif
         if (!langOverride && !config.language.empty()) {
             langSource = config.language;
         }

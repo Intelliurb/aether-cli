@@ -8,7 +8,9 @@
 
 set BIN [expr {$argc > 0 ? [lindex $argv 0] : "build/aethercli"}]
 set BIN [file normalize $BIN]
-set timeout 5
+# Generoso de propósito: cada login roda PBKDF2 de 600k iterações (~0,9s em
+# Release, ~8s sob ENABLE_ASAN + -O0). O timeout precisa caber no build lento.
+set timeout 25
 
 # HOME próprio: isola history e ~/.aethercli/config.json (que teria precedência
 # sobre o -C e quebraria o teste na máquina de quem tem um config de usuário).
@@ -39,16 +41,18 @@ close $f
 set failures 0
 set testnum 0
 
+# O \n inicial é necessário: o redraw do shell termina em '\r' sem newline, e
+# sem ele o resultado do teste sai colado na linha repintada.
 proc ok {name} {
     global testnum
     incr testnum
-    puts "  \[PASS\] $name"
+    puts "\n  \[PASS\] $name"
 }
 proc fail {name why} {
     global failures testnum
     incr testnum
     incr failures
-    puts "  \[FAIL\] $name -- $why"
+    puts "\n  \[FAIL\] $name -- $why"
 }
 
 # Espera um padrão; reporta pass/fail sem abortar o resto da suíte.
@@ -60,20 +64,20 @@ proc want {name pat} {
     }
 }
 
-# Confere que um padrão NÃO aparece antes do próximo prompt.
-proc want_not {name pat} {
-    expect {
-        -re $pat          { fail $name "apareceu (nao deveria): $pat" }
-        -re {aethercli# } { ok $name }
-        timeout           { fail $name "timeout" }
-    }
-}
+# Pausa obrigatória depois de todo comando que executa um shell command.
+# Durante a execução o terminal volta ao modo cooked; ao terminar, o
+# TerminalRestorer repõe o raw mode com TCSAFLUSH, que DESCARTA a entrada
+# pendente. Sem esta pausa o send() seguinte é digitado dentro dessa janela e
+# some silenciosamente. Não dá para sincronizar pelo prompt: ele é repintado
+# a cada ~110ms, então casaria na hora e não provaria nada.
+proc settle {} { sleep 1.0 }
 
 puts "== aethercli: testes do loop interativo =="
 
 spawn $BIN -C $CONF
 want "motd exibido"            {TEST-MOTD-OK}
 want "prompt inicial"          {aethercli# }
+settle
 
 # --- Completar com TAB -----------------------------------------------------
 # "sh" + TAB -> unico match ("show"), completa e adiciona espaco.
@@ -108,10 +112,12 @@ want "entrada invalida marca com ^" {Invalid input detected}
 # --- Execucao de comando ---------------------------------------------------
 send "show version\r"
 want "comando executa activation" {VERSION_RAN}
+settle
 
 # --- Abreviacao estilo Cisco -----------------------------------------------
 send "sh ver\r"
 want "abreviacao 'sh ver' resolve" {VERSION_RAN}
+settle
 
 # --- Comando incompleto ----------------------------------------------------
 send "show\r"
@@ -128,6 +134,7 @@ want "argumento com '-' bloqueado" {Security violation}
 # --- args: append repassa argumento ----------------------------------------
 send "show files /tmp\r"
 want "args append executa" {FILES_RAN}
+settle
 
 # --- Historico (seta pra cima) ---------------------------------------------
 send "\033\[A"
@@ -140,6 +147,7 @@ send "\003"
 want "ctrl+c ecoa ^C" {\^C}
 send "show version\r"
 want "shell sobrevive ao ctrl+c" {VERSION_RAN}
+settle
 
 # --- Edicao UTF-8: backspace apaga o acento inteiro ------------------------
 # "ção" + 1 backspace deve sobrar "çã" (e nao meio byte de 'o').
@@ -189,8 +197,10 @@ send "operador\r"
 expect "Password: "
 send "senha12345\r"
 want "login correto entra na shell" {AUTH-MOTD-OK}
+settle
 send "show version\r"
 want "comando roda apos login" {VERSION_RAN}
+settle
 send "exit\r"
 expect eof
 

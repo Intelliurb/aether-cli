@@ -1,6 +1,6 @@
 # aethercli - Manual de Instruções (RTFM)
 
-O **aethercli** é uma interface de linha de comando avançada, inspirada no Cisco IOS, projetada para automação de tarefas e gerenciamento de servidores com suporte nativo para sugestões por IA e macros.
+O **aethercli** é uma interface de linha de comando avançada, inspirada no Cisco IOS, projetada para automação de tarefas e gerenciamento de servidores com macros.
 
 ---
 
@@ -25,6 +25,7 @@ Com o prefixo acima, o `make install` posiciona os arquivos em:
 - Binário: `/usr/local/bin/aethercli`
 - Configurações: `/usr/local/etc/aethercli/` (`config.json`, arquivos de idioma, macros)
 - Scripts: `/usr/local/etc/aethercli/scripts/` (scripts bash internos)
+- Páginas de manual (man): `/usr/local/share/man/man1/aethercli.1` (acesse via `man aethercli`)
 
 O caminho padrão de configuração é gravado no binário em tempo de compilação (variável de cache CMake `AETHERCLI_CONFIG`); ele pode ser sobrescrito em tempo de execução usando `-C <file>`. O caminho do diretório `var` (usado para locks de sessões) também pode ser especificado via `-DAETHERCLI_VAR_DIR=/path/to/var` na compilação.
 
@@ -51,6 +52,26 @@ Se o arquivo de configuração não existir, o aethercli imprimirá um aviso e i
 ```bash
 aethercli -p "show version"
 ```
+
+### Instalação em Somente Leitura (Acesso Global)
+Para uso seguro e compartilhado por múltiplos usuários no sistema operacional, instale o binário em `/usr/local/bin` com permissões de somente leitura e execução para usuários comuns:
+```bash
+sudo chown root:root /usr/local/bin/aethercli 2>/dev/null || sudo chown root:wheel /usr/local/bin/aethercli
+sudo chmod 0755 /usr/local/bin/aethercli
+```
+
+### Padrão de Automação: Scripts Wrapper
+Em vez de sobrecarregar um `config.json` global com dezenas de utilitários distintos, crie um *script wrapper* para cada programa ou ferramenta gerenciada. O script fica em um diretório do `$PATH` (como `/usr/local/bin/<nome-app>`) e invoca o `aethercli` repassando a flag `-C` com o arquivo de configuração local daquele serviço:
+
+```bash
+#!/bin/sh
+# /usr/local/bin/backup-cli
+set -e
+CONF="/opt/backup-system/etc/config.json"
+exec /usr/local/bin/aethercli -C "$CONF" "$@"
+```
+
+> **Aviso de Segurança:** O arquivo `config.json` e seu diretório pai devem ser de propriedade exclusiva do `root` com permissão `0644` (diretórios `0755`). Quem edita o `config.json` define os comandos que o host executará.
 
 ---
 
@@ -84,7 +105,6 @@ O aethercli reserva diretivas `activation` específicas para recursos da engine:
 - `internal:config_mode`: Troca o contexto para o modo de configuração (`aethercli(config)#`).
 - `internal:run_macro`: Executa um lote de comandos a partir de um arquivo `.macro`.
 - `internal:list_macros`: Lista macros disponíveis no diretório de configurações.
-- `internal:ai`: Envia os tokens subsequentes como uma requisição de linguagem natural para a IA local (ver Seção 7).
 
 ### 4.2 Sistema de Macros
 Macros são arquivos texto puros terminados com `.macro`. Cada linha é executada como se tivesse sido digitada no prompt.
@@ -116,12 +136,25 @@ E então aplicar todos os passos automaticamente rodando:
 
 A configuração é **hierárquica**. Isso permite roteamentos complexos e organizados no mesmo estilo de roteadores de mercado.
 
+### Metodologia de Configuração: O Paradigma Objeto-Ação
+Ao projetar árvores de comandos no `config.json`, adote sempre a premissa de **Objeto-Ação**:
+- **Nível 1 (Objeto):** Identifica o recurso alvo gerenciado (ex: `service`, `database`, `network`, `system`, `user`).
+- **Nível 2 (Ação):** Identifica a operação executada sobre aquele recurso (ex: `start`, `stop`, `restart`, `status`, `backup`, `list`).
+- **Nível 3 / Argumentos:** Parâmetros ou alvos específicos.
+
+Por que usar Objeto-Ação?
+- **Descoberta intuitiva:** O operador digita `database ?` e descobre imediatamente todas as ações disponíveis para banco de dados.
+- **Reutilização de verbos sem colisão:** Nomes como `status` ou `start` podem ser repetidos sob objetos distintos (`service status` e `database status`).
+- **Autocompletar limpo:** Evita a poluição do primeiro nível de opções ao pressionar TAB.
+
 ### Estrutura do Objeto Command
 - `name`: Nome do comando (usado no terminal). **Obrigatório.**
-- `short_desc`: Descrição curta exibida no Duplo-TAB.
-- `description`: Descrição detalhada (usada via prompt no sistema de IA).
-- `syntax`: Texto exibido como ajuda de sintaxe e uso detalhado.
+- `abbrev`: (Opcional) Abreviação explícita do comando.
+- `short_desc`: (Opcional) Descrição curta exibida no Duplo-TAB.
+- `description`: (Opcional) Descrição longa ou documentação detalhada do comando.
+- `syntax`: (Opcional) Texto exibido como ajuda de sintaxe e uso detalhado (Triplo-TAB).
 - `activation`: O script OS, utilitário, ou keyword interna que será disparada.
+- `admin_only`: (Opcional) Se `true`, restringe a execução exclusivamente ao usuário autenticado `admin`.
 - `args`: `"none"` (padrão) ou `"append"`. Com `"append"`, argumentos não previstos na configuração são concatenados (como tokens sanitizados) diretamente após a execução nativa da chave `activation`. Com `"none"`, sobressalentes são negados. Ver Seção 6.
 - `subcommands`: (Opcional) Uma array que suporta recursivamente os mesmos nós hierárquicos acima.
 
@@ -169,27 +202,7 @@ Por padrão, **o log é completamente inibido** garantindo proteção contra vaz
 
 ---
 
-## 7. Integração IA (llama.cpp / Ollama)
-
-O aethercli injeta interativamente o esquema natural para extrair de uma Inteligência Artificial local a melhor e mais correta cadeia de operação. O consumo suporta as bases API no formato nativo da OpenAI (`/v1/chat/completions`), suportando tanto as suítes **llama.cpp** (`llama-server`) quanto os endpoints da ferramenta **Ollama** de maneira 100% agnóstica.
-
-- **Uso:** `ai how do I check the routing table`
-- **Fluxo Cíclico:** O sistema joga a árvore iterável do `config.json` para o modelo de base e extrai o `activation` mais pragmático possível que responde de maneira idêntica. Formatações residuais (`markdown`, `think logs`) são drenados e as saídas exigem autorização confirmada por um prompt explícito (`Execute '...'? (y/n)`) antes de seu disparo real. No formato script/headless o `ai` não executará nada, apenas exibirá o log.
-- **Chamando via llama.cpp:**
-  ```bash
-  llama-server -m /opt/llm/Qwen3-VL-2B-Instruct-Q4_K_M.gguf --port 8080
-  ```
-- **Configurações por Variáveis de Ambiente:**
-  - `AI_HOST` (Padrão: `localhost`)
-  - `AI_PORT` (Padrão: Auto-probing porta `11434` (Ollama) e então `8080` (llama-server))
-  - `AI_MODEL` (Padrão: `default`; O llama-server ignora os pesos da string, o Ollama necessitará do peso com modelo declarado, ex `llama3`)
-  - `AI_API_KEY` (Opcional; será processado pelo header nativo `Authorization: Bearer`)
-- **Prompt da System Rule:** pode ser sobrescrito localmente pela tradução em json (`lang_*.json`) por meio da key: `ai_system_prompt`.
-- Dica: O literal `?` triga a interrogação da árvore nativa no aethercli. Nas requisições contextuais diretas para a rede, exclua ou escape a interrogação para que a query possa ir ilesa ao backend de inference.
-
----
-
-## 8. Autenticação e Gerenciamento de Usuários
+## 7. Autenticação e Gerenciamento de Usuários
 
 O aethercli dá suporte completo a autenticação e validação multi-layer para o próprio prompt da interface.
 
