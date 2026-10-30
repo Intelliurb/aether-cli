@@ -31,7 +31,49 @@ printf '%s\n' '{"require_authentication":true,"commands":[{"name":"danger","acti
 printf '%s\n' '{"require_authentication":true,"passwd-file":"bootstrap-users.json","commands":[{"name":"danger","activation":"echo BOOTSTRAP_ADMIN","admin_only":true}]}' > "$BOOTSTRAP_CONFIG"
 printf '%s\n' false > "$HOME_DIR/.aethercli/authentication"
 
-output=$(HOME="$HOME_DIR" "$BIN" -C "$BOOTSTRAP_CONFIG" -p danger)
+# Sem contas: nada de acesso sem senha, e admin/admin obriga a trocar antes de abrir.
+set +e
+output=$(printf '' | HOME="$HOME_DIR" "$BIN" -C "$BOOTSTRAP_CONFIG" -p danger 2>&1)
+status=$?
+set -e
+[ "$status" -eq 1 ]
+assert_absent "$output" 'BOOTSTRAP_ADMIN'
+set +e
+output=$(printf 'admin\nerrada\nadmin\nerrada\nadmin\nerrada\n' | HOME="$HOME_DIR" "$BIN" -C "$BOOTSTRAP_CONFIG" -p danger 2>&1)
+status=$?
+set -e
+[ "$status" -eq 1 ]
+assert_absent "$output" 'BOOTSTRAP_ADMIN'
+[ ! -e "$TMP_DIR/bootstrap-users.json" ]
+# Recusar a troca (senha curta, inclusive "admin") não abre a sessão nem cria contas.
+set +e
+output=$(printf 'admin\nadmin\nadmin\nadmin\nadmin\n' | HOME="$HOME_DIR" "$BIN" -C "$BOOTSTRAP_CONFIG" -p danger 2>&1)
+status=$?
+set -e
+[ "$status" -eq 1 ]
+assert_absent "$output" 'BOOTSTRAP_ADMIN'
+[ ! -e "$TMP_DIR/bootstrap-users.json" ]
+output=$(printf 'admin\nadmin\nnovasenha1\nnovasenha1\n' | HOME="$HOME_DIR" "$BIN" -C "$BOOTSTRAP_CONFIG" -p danger 2>&1)
+printf '%s\n' "$output" | grep -q 'BOOTSTRAP_ADMIN'
+[ -e "$TMP_DIR/bootstrap-users.json" ]
+# Depois da troca, a senha padrão deixa de valer.
+set +e
+output=$(printf 'admin\nadmin\n' | HOME="$HOME_DIR" "$BIN" -C "$BOOTSTRAP_CONFIG" -p danger 2>&1)
+status=$?
+set -e
+[ "$status" -eq 1 ]
+assert_absent "$output" 'BOOTSTRAP_ADMIN'
+# Arquivo existente mas ilegível não é "sem contas": a senha padrão não vale.
+chmod 000 "$TMP_DIR/bootstrap-users.json"
+set +e
+output=$(printf 'admin\nadmin\nroubada123\nroubada123\n' | HOME="$HOME_DIR" "$BIN" -C "$BOOTSTRAP_CONFIG" -p danger 2>&1)
+status=$?
+set -e
+chmod 600 "$TMP_DIR/bootstrap-users.json"
+[ "$status" -eq 1 ]
+assert_absent "$output" 'BOOTSTRAP_ADMIN'
+assert_absent "$output" 'Default password'
+output=$(printf 'admin\nnovasenha1\n' | HOME="$HOME_DIR" "$BIN" -C "$BOOTSTRAP_CONFIG" -p danger 2>&1)
 printf '%s\n' "$output" | grep -q 'BOOTSTRAP_ADMIN'
 
 printf 'senha12345\nsenha12345\n' | HOME="$HOME_DIR" "$BIN" -C "$AUTH_CONFIG" --adduser operador >/dev/null
@@ -241,3 +283,87 @@ printf '%s\n' '{"passwd-file":"","commands":[]}' > "$SPACE_DIR/config.json"
 output=$(HOME="$TMP_DIR/outro-home" AETHERCLI_BIN="$BIN" sh "$SCRIPTS_DIR/generate-initial-admin.sh" "$SPACE_DIR/config.json")
 [ "$(printf '%s\n' "$output" | sed -n '$p' | wc -c | tr -d ' ')" -eq 25 ]
 [ -n "$(find "$SPACE_DIR/users.json" -type f -perm 600)" ]
+
+# Árvore padrão em objeto-ação; só configure fica fora do padrão.
+DEFAULT_CONFIG="$SCRIPTS_DIR/../config.json"
+[ "$(jq -c '[.commands[].name]' "$DEFAULT_CONFIG")" = '["system","network","file","macro","settings","configure"]' ]
+output=$(HOME="$TMP_DIR/outro-home" "$BIN" -C "$DEFAULT_CONFIG" -p 'system time')
+printf '%s\n' "$output" | grep -q '[0-9]'
+output=$(HOME="$TMP_DIR/outro-home" "$BIN" -C "$DEFAULT_CONFIG" -p 'network route' 2>&1 || true)
+assert_absent "$output" 'Invalid input'
+set +e
+HOME="$TMP_DIR/outro-home" "$BIN" -C "$DEFAULT_CONFIG" -p 'show version' >/dev/null 2>&1
+status=$?
+set -e
+[ "$status" -eq 127 ]
+# Toda ativação de script da árvore aponta para um arquivo existente.
+jq -r '.. | .activation? // empty' "$DEFAULT_CONFIG" | grep 'AETHERCLI_SCRIPTS_DIR' | sed 's/.*AETHERCLI_SCRIPTS_DIR}\///' | while read -r script; do
+    [ -x "$SCRIPTS_DIR/$script" ]
+done
+# Primeiro login com pepper por usuário: a senha nova autentica e a padrão, não.
+FIRST_HOME="$TMP_DIR/first-home"
+mkdir -p "$FIRST_HOME/.aethercli"
+printf '%s\n' '{"require_authentication":true,"commands":[{"name":"plain","activation":"echo FIRST_RAN"}]}' > "$FIRST_HOME/.aethercli/config.json"
+output=$(printf 'admin\nadmin\nnovasenha1\nnovasenha1\n' | HOME="$FIRST_HOME" "$BIN" -p plain 2>&1)
+printf '%s\n' "$output" | grep -q 'FIRST_RAN'
+[ -n "$(find "$FIRST_HOME/.aethercli/pepper" -type f -perm 400)" ]
+output=$(printf 'admin\nnovasenha1\n' | HOME="$FIRST_HOME" "$BIN" -p plain 2>&1)
+printf '%s\n' "$output" | grep -q 'FIRST_RAN'
+
+# Conta legada de senha vazia: login vazio recusado, com outra conta no arquivo.
+LEGACY_EMPTY="$TMP_DIR/legacy-empty"
+mkdir -p "$LEGACY_EMPTY"
+printf '%s\n' '{"require_authentication":true,"commands":[{"name":"plain","activation":"echo EMPTY_RAN"}]}' > "$LEGACY_EMPTY/config.json"
+# Hash de senha vazia, salt fixo e 1000 iterações, sem pepper.
+printf '%s\n' '{"users":[{"username":"admin","salt":"00112233445566778899aabbccddeeff","hash":"e12d6ee2a7f80bc47b634673234fab4f640358f056f5bf8d0e89a405c1afff86","iterations":1000},{"username":"outro","salt":"00112233445566778899aabbccddeeff","hash":"e12d6ee2a7f80bc47b634673234fab4f640358f056f5bf8d0e89a405c1afff86","iterations":1000}]}' > "$LEGACY_EMPTY/users.json"
+set +e
+output=$(printf 'admin\n\n' | HOME="$TMP_DIR/outro-home" "$BIN" -C "$LEGACY_EMPTY/config.json" -p plain 2>&1)
+status=$?
+set -e
+[ "$status" -eq 1 ]
+assert_absent "$output" 'EMPTY_RAN'
+
+# reload em -p valida o config e termina normalmente, inclusive dentro de macro.
+output=$(HOME="$TMP_DIR/outro-home" "$BIN" -C "$DEFAULT_CONFIG" -p 'configure terminal reload' 2>&1)
+assert_absent "$output" 'Fatal'
+HEADLESS_DIR="$TMP_DIR/headless-reload"
+mkdir -p "$HEADLESS_DIR"
+cp "$DEFAULT_CONFIG" "$HEADLESS_DIR/config.json"
+printf 'configure terminal reload\n' > "$HEADLESS_DIR/rl.macro"
+output=$(HOME="$TMP_DIR/outro-home" "$BIN" -C "$HEADLESS_DIR/config.json" -p 'macro run rl.macro' 2>&1)
+assert_absent "$output" 'Fatal'
+
+# Passos depois do reload não podem virar falso sucesso, nem em macro aninhada.
+reload_rejected() {
+    set +e
+    output=$(HOME="$TMP_DIR/outro-home" "$BIN" -C "$HEADLESS_CONFIG" -p "macro run $1" 2>&1)
+    status=$?
+    set -e
+    [ "$status" -ne 0 ]
+    assert_absent "$output" 'AFTER_RAN'
+    assert_absent "$output" 'Fatal'
+}
+HEADLESS_CONFIG="$HEADLESS_DIR/h.json"
+cat << 'CFG' > "$HEADLESS_CONFIG"
+{ "commands": [
+    { "name": "after", "activation": "echo AFTER_RAN" },
+    { "name": "breakit", "activation": "echo 'nao e json' > \"$AETHERCLI_CONFIG\"" },
+    { "name": "removeit", "activation": "rm -f \"$AETHERCLI_CONFIG\"" },
+    { "name": "macro", "subcommands": [ { "name": "run", "activation": "internal:run_macro", "args": "append" } ] },
+    { "name": "configure", "subcommands": [ { "name": "terminal", "activation": "internal:config_mode", "subcommands": [
+        { "name": "reload", "activation": "internal:reload" } ] } ] }
+] }
+CFG
+cp "$HEADLESS_CONFIG" "$HEADLESS_DIR/h.orig"
+printf 'configure terminal reload\nafter\n' > "$HEADLESS_DIR/mid.macro"
+reload_rejected mid.macro
+printf 'macro run rl.macro\nafter\n' > "$HEADLESS_DIR/outer.macro"
+reload_rejected outer.macro
+
+# Config inválido ou apagado no momento do reload dá status de erro.
+printf 'breakit\nconfigure terminal reload\n' > "$HEADLESS_DIR/broken.macro"
+reload_rejected broken.macro
+cp "$HEADLESS_DIR/h.orig" "$HEADLESS_CONFIG"
+printf 'removeit\nconfigure terminal reload\n' > "$HEADLESS_DIR/gone.macro"
+reload_rejected gone.macro
+cp "$HEADLESS_DIR/h.orig" "$HEADLESS_CONFIG"

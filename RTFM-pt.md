@@ -50,7 +50,7 @@ Se o arquivo de configuração não existir, o aethercli imprimirá um aviso e i
 
 ### Modo Headless (Automação)
 ```bash
-aethercli -p "show version"
+aethercli -p "system version"
 ```
 
 ### Servidor MCP (Model Context Protocol)
@@ -119,9 +119,9 @@ O aethercli usa um sistema de interação imediata:
 - **TAB (1x):** Autocompleta o token atual até o prefixo comum mais longo das correspondências; correspondências únicas são completadas inteiramente (acrescentando um espaço). Caso não haja opções, tocará a campainha do terminal.
 - **TAB (2x):** Mostra instantaneamente as opções disponíveis para o nível atual.
 - **Interrogação (?):** Mostra instantaneamente as opções disponíveis sem necessidade de pressionar ENTER. Dentro de aspas duplas, o `?` é digitado de forma literal.
-- **Abreviações:** Qualquer prefixo único (não ambíguo) funciona como o comando inteiro (`sh ip ro` = `show ip route`). Abreviações ambíguas relatarão `% Ambiguous command`.
+- **Abreviações:** Qualquer prefixo único (não ambíguo) funciona como o comando inteiro (`net ro` = `network route`). Abreviações ambíguas relatarão `% Ambiguous command`.
 - **ENTER:** Executa o comando. Sinais e códigos de saída diferentes de zero do comando subjacente são relatados.
-- **reload conf:** Recarrega a quente (hot-reload) o arquivo de configuração (`config.json`), a base de usuários e arquivos de idiomas direto na memória, sem necessidade de reiniciar o shell interativo.
+- **reload (`configure terminal`):** Recarrega a quente (hot-reload) o arquivo de configuração (`config.json`), a base de usuários e arquivos de idiomas direto na memória, sem necessidade de reiniciar o shell interativo.
 - **exit / quit / Ctrl+D (linha vazia):** Sai do modo de configuração ou termina o programa. As configurações do terminal são restauradas na saída, incluindo sinais SIGINT/SIGTERM/SIGHUP.
 - **Ctrl+C:** No prompt, limpa a linha atual. Quando um comando subjacente estiver rodando, interrompe apenas aquele comando — o shell em si continua vivo.
 
@@ -144,28 +144,24 @@ O aethercli reserva diretivas `activation` específicas para recursos da engine:
 - `internal:list_macros`: Lista macros disponíveis no diretório de configurações.
 
 ### 4.2 Sistema de Macros
-Macros são arquivos texto puros terminados com `.macro`. Cada linha é executada como se tivesse sido digitada no prompt.
+Macros são arquivos texto puros terminados com `.macro`. Cada linha é executada como se tivesse sido digitada no prompt. A macro usa sempre a árvore a partir da raiz, então escreva o caminho completo, mesmo depois de `configure terminal`. Um `reload` encerra a macro, então ele deve ser a última linha.
 
 1. A engine procura arquivos de texto puro, geralmente com extensão `.macro`, armazenados no seu diretório de configurações (ex: `~/.aethercli/`).
-2. Você pode rodar o comando `list macros` (ou `configure terminal` -> `list macros`) para ver o que tem disponível lá.
-3. Quando você chama `run macro meuarquivo.macro`, a engine abre esse arquivo e "digita" os comandos linha por linha na própria shell, como se fosse o usuário operando o teclado. Ele redireciona essas linhas direto pro loop de execução nativo (`executeCommand`).
+2. Você pode rodar `configure terminal` e depois `list macros` para ver o que tem disponível lá.
+3. Quando você chama `macro run meuarquivo.macro`, a engine abre esse arquivo e "digita" os comandos linha por linha na própria shell, como se fosse o usuário operando o teclado. Ele redireciona essas linhas direto pro loop de execução nativo (`executeCommand`).
 4. Existe até uma proteção estrita contra recursão (um limitador `MAX_MACRO_DEPTH`) no código, para impedir que você crie um macro que chame a si próprio infinitamente e trave o AetherCLI num loop.
 
 **Valor real e Exemplo Prático:**
 Em ambientes corporativos e de infraestrutura, é muito comum aplicar configurações em lote ("batch"). Ao invés de digitar dezenas de comandos no prompt, você pode criar um arquivo chamado `setup_inicial.macro` com o conteúdo abaixo:
 
 ```text
-configure terminal
-add user john
-add user jane
-set language portuguese-brasil
-set statusbar on
-reload conf
-exit
+configure terminal set language portuguese-brasil
+configure terminal set statusbar on
+configure terminal reload
 ```
 
 E então aplicar todos os passos automaticamente rodando:
-`aethercli# run macro setup_inicial.macro`
+`aethercli# macro run setup_inicial.macro`
 
 ---
 
@@ -214,7 +210,7 @@ Por que usar Objeto-Ação?
           "name": "disk",
           "short_desc": "Uso de disco",
           "activation": "df -h",
-          "syntax": "show disk [path]",
+          "syntax": "system disk [path]",
           "args": "append"
         }
       ]
@@ -284,7 +280,9 @@ aethercli --adduser admin
 ```
 A variável superposta ambiente (env var) `AETHERCLI_PEPPER` acopla um tempero fixo que é digerido sobre a chave durante a maturação do bloco `PBKDF2`. Ela deve ser fixada identicamente tanto durante execuções headless (--adduser) como durante a carga viva de login das shell's configuradas.
 
-Sem essa variável, um `users.json` novo em `~/.aethercli` ganha um pepper aleatório próprio em `~/.aethercli/pepper`, modo `0400`, criado pelo `--adduser`. Ele nunca é sobrescrito, e apagá-lo invalida as senhas desse arquivo. Um `users.json` que já existia, ou um arquivo fora de `~/.aethercli`, não usa esse pepper. Permissão aberta ou outro dono impedem o login.
+Sem arquivo de usuários, o primeiro login é `admin` com a senha `admin`, e a sessão só abre depois de definir uma nova senha.
+
+Sem essa variável, um `users.json` novo em `~/.aethercli` ganha um pepper aleatório próprio em `~/.aethercli/pepper`, modo `0400`, criado pelo `--adduser` ou pelo primeiro login. Ele nunca é sobrescrito, e apagá-lo invalida as senhas desse arquivo. Um `users.json` que já existia, ou um arquivo fora de `~/.aethercli`, não usa esse pepper. Permissão aberta ou outro dono impedem o login.
 
 O formato está em `etc/users.json.template`, que não contém credenciais e nega o login se copiado como está. `scripts/generate-initial-admin.sh` cria o `admin` com uma senha aleatória exibida uma única vez. Mantenha o `users.json` em modo `0600`, nunca o versione e faça backup dele junto com o `pepper`. O passo a passo está em `RTFM.md`.
 
@@ -308,14 +306,14 @@ Manipule as raízes e subcomandos do `config.json` sem sair para interfaces exte
 
 - **`add command <parent_path> <name> <short_desc> [activation] [syntax]`**
   Anexa e encorpa a árvore JSON alistando uma rotina inteiramente nova.
-  *Sintaxe na prática:* `add command /show "disk" "Show disk usage" "df -h" "show disk"`
+  *Sintaxe na prática:* `add command /system "usage" "Show disk usage" "df -h" "system usage"`
   *(Em cenários que objetivam crescer na árvore mestra e base, submeta o alvo `/` vazio na chave de parent path).*
 
 - **`rm command <command_path>`**
   Descola e poda a raiz da diretiva selecionada para a morte.
-  *Sintaxe na prática:* `rm command /show/disk`
+  *Sintaxe na prática:* `rm command /system/usage`
 
-> **Note:** Ao executar transições modulares na raiz mestra com essas features dinâmicas acimas (seja via *add/rm command* ou via reset no idioma *set language*), consolide e espelhe essas mutações à execução viva sem perder sessão através de seu chamador `reload conf`.
+> **Note:** Ao executar transições modulares na raiz mestra com essas features dinâmicas acimas (seja via *add/rm command* ou via reset no idioma *set language*), consolide e espelhe essas mutações à execução viva sem perder sessão através de seu chamador `reload`.
 
 ---
 *aethercli v0.5.0 - Segurança, Hierarquia, Autenticação, AI e Mutabilidade Dinâmica Config Implemented*

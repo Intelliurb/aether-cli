@@ -11,7 +11,7 @@ check_write_permission "$AETHERCLI_CONFIG"
 if [ "$#" -lt 3 ]; then
     get_msg "script_add_cmd_usage" "Usage: add command <parent_path> <name> <short_desc> [activation] [syntax]"
     get_msg "script_add_cmd_hint" "  Use / for root level. Use quotes if arguments contain spaces."
-    get_msg "script_add_cmd_example" "  Example: add command /show \"disk\" \"Show disk usage\" \"df -h\" \"show disk\""
+    get_msg "script_add_cmd_example" "  Example: add command /system \"usage\" \"Show disk usage\" \"df -h\" \"system usage\""
     exit 1
 fi
 
@@ -69,7 +69,7 @@ jq --arg path "$PARENT_PATH" --argjson new_cmd "$NEW_CMD" '
 ' "$AETHERCLI_CONFIG" > "$TMP_FILE"
 
 if [ $? -eq 0 ] && mv "$TMP_FILE" "$AETHERCLI_CONFIG"; then
-    get_msg "script_cmd_added" "Command added successfully. Run 'reload conf' to apply."
+    get_msg "script_cmd_added" "Command added successfully. Run 'reload' to apply."
 else
     rm -f "$TMP_FILE"
     get_msg "script_cmd_error" "Error: Failed to modify config file."

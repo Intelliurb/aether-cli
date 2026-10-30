@@ -50,15 +50,14 @@
   
   "commands": [
     {
-      "name": "show",
-      "abbrev": "sh",
+      "name": "system",
       "short_desc": "Display system information",
       "subcommands": [
         {
           "name": "version",
           "short_desc": "System version",
           "activation": "uname -a",
-          "syntax": "show version"
+          "syntax": "system version"
         }
       ]
     }

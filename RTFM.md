@@ -109,8 +109,8 @@ $ printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":
 
 Com `"require_authentication": true`, o servidor exige `AETHERCLI_USER` e
 `AETHERCLI_PASSWORD` válidos no ambiente e encerra com status 1 caso contrário,
-porque o stdin pertence ao protocolo. O bootstrap do login interativo (entrar
-como `admin` sem `users.json`) não vale aqui.
+porque o stdin pertence ao protocolo. A senha padrão do primeiro login (`admin`,
+sem `users.json`) não vale aqui.
 
 O MCP nunca serve a árvore de administração: a subárvore `configure` e os comandos
 `admin_only`. Com ou sem autenticação, o agente acessa todo o resto, então use um
@@ -151,9 +151,11 @@ O script cria o `admin` com uma senha aleatória de 24 caracteres, que aparece u
 única vez, e recusa rodar se o `users.json` já existir. Se `aethercli` não estiver
 no `PATH`, defina `AETHERCLI_BIN`. Ele também cria `~/.aethercli/pepper`.
 
-Até existir um `users.json`, o shell interativo e o `-p` entram como `admin` sem
-senha. Crie as contas antes de expor o shell a outras pessoas. O modo MCP não tem
-essa exceção.
+Sem o script, o primeiro login é `admin` com a senha `admin`. Ela só vale enquanto
+não houver um `users.json`, e a sessão só abre depois de definir uma nova senha, com
+direito de escrita no arquivo: em instalação do sistema, faça isso com `sudo`. Até lá,
+qualquer um que execute o aethercli com esse config pode fazer essa troca, então
+faça-a logo na instalação. O modo MCP não aceita a senha padrão.
 
 ## Contas seguintes
 
@@ -205,22 +207,22 @@ Crie o arquivo no mesmo diretório do `config.json` em uso:
 
 ```text
 # inventário diário
-show system disk
-show system memory
-show ip interface
+system disk
+system memory
+network interface
 ```
 
 Salve, por exemplo, como `inventario.macro` e execute:
 
 ```text
-aethercli# run macro inventario.macro
+aethercli# macro run inventario.macro
 ```
 
 Um caminho relativo é resolvido a partir do diretório do arquivo de
 configuração; um caminho absoluto também é aceito:
 
 ```text
-aethercli# run macro /opt/aethercli/inventario.macro
+aethercli# macro run /opt/aethercli/inventario.macro
 ```
 
 Para listar os arquivos `.macro` disponíveis no diretório da configuração:

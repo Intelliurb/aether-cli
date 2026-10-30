@@ -1,6 +1,6 @@
 # aethercli
 
-**aethercli** is a Cisco IOS–style interactive shell for system and application administration. It is not a fixed set of built-in commands: each application (or deployment) supplies its own hierarchical command tree in a `config.json`, mapping phrases such as `show ip route` to activations (shell commands or scripts). Optional macros, localization, and authentication build on that tree.
+**aethercli** is a Cisco IOS–style interactive shell for system and application administration. It is not a fixed set of built-in commands: each application (or deployment) supplies its own hierarchical command tree in a `config.json`, mapping phrases such as `network route` to activations (shell commands or scripts). Optional macros, localization, and authentication build on that tree.
 
 If you start the binary without a configuration file for your application, the command set is empty by design (aside from built-ins such as `exit` / `quit` and `?`). Point `-C` at the application’s config, or install under the default path baked in at build time.
 
@@ -63,7 +63,7 @@ aethercli -C /path/to/your-app/config.json
 aethercli -l pt -C /path/to/your-app/config.json
 
 # One command, non-interactive
-aethercli -C /path/to/your-app/config.json -p "show system cpu"
+aethercli -C /path/to/your-app/config.json -p "system cpu"
 
 aethercli --help
 aethercli --version

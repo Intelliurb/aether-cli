@@ -274,6 +274,64 @@ send "errada2\r"
 want "estouro de tentativas encerra" {too many failed login attempts}
 expect eof
 
+# --- Arvore padrao: reload fica dentro de configure --------------------------
+set DEFAULT_CONF [file normalize [file join [file dirname [info script]] .. etc config.json]]
+spawn $BIN -C $DEFAULT_CONF
+want "prompt da arvore padrao" {aethercli# }
+settle
+send "reload\r"
+want "reload fora de configure e invalido" {Invalid input}
+settle
+send "configure terminal\r"
+want "entra em configure" {config\)# }
+settle
+send "reload\r"
+want "reload dentro de configure" {Reloading}
+want "prompt apos reload" {aethercli# }
+send "\004"
+expect eof
+
+# Reload dentro de macro nao pode deixar a sessao gravando no log da macro.
+set f [open "$SANDBOX/rl.macro" w]
+puts $f "configure terminal reload"
+close $f
+set RCONF "$SANDBOX/reload.json"
+set f [open $RCONF w]
+puts $f {{ "commands": [
+  { "name": "macro", "subcommands": [ { "name": "run", "activation": "internal:run_macro", "args": "append" } ] },
+  { "name": "marker", "activation": "echo AFTER_RELOAD_MARK" },
+  { "name": "configure", "subcommands": [ { "name": "terminal", "activation": "internal:config_mode", "subcommands": [
+    { "name": "reload", "activation": "internal:reload" } ] } ] }
+] }}
+close $f
+spawn $BIN -C $RCONF
+want "prompt antes da macro" {aethercli# }
+settle
+send "macro run rl.macro\r"
+want "macro recarrega" {Reloading}
+# Sincroniza pelo prompt: antes dele o shell ainda nao voltou ao raw mode, e o
+# TCSAFLUSH descartaria o que fosse digitado.
+want "prompt apos macro com reload" {aethercli# }
+send "marker\r"
+want "comando roda apos macro com reload" {AFTER_RELOAD_MARK}
+settle
+send "\004"
+expect eof
+# O tee tambem escreve no terminal: o vazamento so aparece no log da macro.
+set macro_logs [glob -nocomplain "$SANDBOX/rl.macro.*.out"]
+if {[llength $macro_logs] != 1} {
+    fail "log da macro existe" "encontrados: $macro_logs"
+} else {
+    set f [open [lindex $macro_logs 0] r]
+    set macro_log [read $f]
+    close $f
+    if {[string first "AFTER_RELOAD_MARK" $macro_log] >= 0} {
+        fail "sessao nao grava no log da macro" "saida posterior ao reload no log"
+    } else {
+        ok "sessao nao grava no log da macro"
+    }
+}
+
 # --- Resultado -------------------------------------------------------------
 file delete -force $SANDBOX
 puts ""

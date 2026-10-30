@@ -444,8 +444,11 @@ underscores; \fBinternal:\fR activations are not exposed. The administration tre
 subcommands) is never served, for any user, including \fBadmin\fR. Each command gets \fI/dev/null\fR as standard input.
 .PP
 With \fBrequire_authentication\fR, the server needs valid \fBAETHERCLI_USER\fR and
-\fBAETHERCLI_PASSWORD\fR variables and otherwise exits with status 1. The bootstrap
-of the interactive login (becoming \fBadmin\fR with no users file) does not apply.
+\fBAETHERCLI_PASSWORD\fR variables and otherwise exits with status 1. The default
+first-login password does not apply.
+.PP
+With no users file, the first interactive or \fB\-p\fR login is \fBadmin\fR with
+password \fBadmin\fR, and the session opens only after setting a new password.
 
 .SH INTERACTIVE NAVIGATION AND SHORTCUTS
 .IP \(bu 3

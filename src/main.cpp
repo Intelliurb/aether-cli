@@ -292,12 +292,36 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
         dup2(pipefd[1], STDOUT_FILENO);
         dup2(pipefd[1], STDERR_FILENO);
 
+        // Restaura a saída também quando a macro termina em reload: senão o resto da
+        // sessão continuaria indo para o log da macro.
+        auto restoreOutput = [&]() {
+            std::cout << std::flush;
+            std::cerr << std::flush;
+            dup2(saved_stdout, STDOUT_FILENO);
+            dup2(saved_stderr, STDERR_FILENO);
+            close(saved_stdout);
+            close(saved_stderr);
+            close(pipefd[1]);
+            int tee_status;
+            waitpid(tee_pid, &tee_status, 0);
+        };
+
         int m_status = 0;
+        try {
         for (const auto& mCmd : *macroCommands) {
             std::cout << prompt << mCmd << "\n";
             std::cout << std::flush;
             int step_status = 0;
-            bool handled = executeCommand(mCmd, tree, lang, ctx, configDir, macro_depth + 1, prompt, &step_status);
+            bool handled = true;
+            try {
+                handled = executeCommand(mCmd, tree, lang, ctx, configDir, macro_depth + 1, prompt, &step_status);
+            } catch (const ReloadException&) {
+                // Reload encerra a macro: com passos pendentes, eles não rodariam e o
+                // status final mentiria sucesso.
+                if (&mCmd == &macroCommands->back()) throw;
+                std::cout << lang.getOr("macro_err_reload_last", "%% Error: reload must be the last line of a macro.") << std::endl;
+                step_status = 1;
+            }
             if (!handled || step_status != 0) {
                 if (!handled) step_status = 127;
                 std::cout << withValue(lang.getOr("macro_err_aborted", "%% Macro aborted due to error at: _VALUE_"), mCmd) << std::endl;
@@ -306,19 +330,15 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
                 break;
             }
         }
+        } catch (...) {
+            restoreOutput();
+            throw;
+        }
         if (m_status == 0) {
             Logger::info("Macro '" + macroFile + "' completed successfully");
         }
 
-        std::cout << std::flush;
-        std::cerr << std::flush;
-        dup2(saved_stdout, STDOUT_FILENO);
-        dup2(saved_stderr, STDERR_FILENO);
-        close(saved_stdout);
-        close(saved_stderr);
-        close(pipefd[1]);
-        int status;
-        waitpid(tee_pid, &status, 0);
+        restoreOutput();
 
         std::cout << withValue(lang.getOr("macro_msg_finished", "% Macro execution finished. Log saved to: _VALUE_"), outFile) << std::endl;
         if (out_status) *out_status = m_status;
@@ -1154,7 +1174,7 @@ int main(int argc, char* argv[]) {
                 // Fail closed, sem o bootstrap do login interativo: não há operador
                 // no servidor, e apagar users.json não pode dar admin a um agente.
                 // O stdin é do protocolo, então a credencial vem do ambiente.
-                if (aerr != AuthError::None || envUser.empty() || !hasMcpPassword ||
+                if (aerr != AuthError::None || envUser.empty() || !hasMcpPassword || mcpPassword.empty() ||
                     !Auth::verify(user_list, envUser, mcpPassword, pepper)) {
                     Logger::error(std::string(errorEntry(AuthError::BadCredentials).tag) + ": MCP session user '" + envUser + "'");
                     std::cerr << lang.getOr("mcp_err_auth_required", "%% Error: MCP requires valid AETHERCLI_USER and AETHERCLI_PASSWORD when authentication is enabled.") << std::endl;
@@ -1172,15 +1192,37 @@ int main(int argc, char* argv[]) {
                 (err == AuthError::None && users.size() == 1 && users.front().username == "admin" &&
                  Auth::verify(users, "admin", "", pepper));
             if (bootstrapAdmin) {
+                // Credencial de instalação: não há hash a publicar, só vale sem contas
+                // e a sessão só abre depois da troca (o --adduser exige 8+ caracteres).
+                int defaultFails = 0;
+                while (true) {
+                    std::string username, password;
+                    if (!Auth::readLineFd(username, false, lang.getOr("auth_prompt_username", "Username: ")) ||
+                        !Auth::readHiddenLine(lang.getOr("auth_prompt_password", "Password: "), password)) {
+                        std::cout << std::endl;
+                        std::cerr << lang.getOr("auth_err_aborted", "%% Login aborted by user.") << std::endl;
+                        return false;
+                    }
+                    if (username == "admin" && password == "admin") break;
+                    ++defaultFails;
+                    Logger::error(std::string(errorEntry(AuthError::BadCredentials).tag) + ": default login");
+                    std::cout << lang.getOr("auth_fail", errorEntry(AuthError::BadCredentials).message) << std::endl;
+                    if (defaultFails >= config.number_auth_fail) {
+                        std::cerr << lang.getOr("auth_locked", errorEntry(AuthError::TooManyAttempts).message) << std::endl;
+                        return false;
+                    }
+                }
+                std::cout << lang.getOr("auth_msg_default_change", "Default password in use: set a new admin password now.") << std::endl;
+                if (!Auth::addUser(usersFile, "admin", lang, err == AuthError::UsersFileMissing)) return false;
                 g_current_user = "admin";
                 setenv("AETHERCLI_USER", g_current_user.c_str(), 1);
-                Logger::info("admin: bootstrap login");
+                Logger::info("admin: default password changed");
                 return true;
             }
             if (err != AuthError::None) {
                 Logger::error(std::string(errorEntry(err).tag) + ": " + usersFile);
-                std::cerr << lang.getOr("auth_fatal", "Fatal: ") << lang.getOr(err == AuthError::UsersFileInvalid ? "auth_err_users_invalid" : "auth_err_users_missing", errorEntry(err).message) << ": " << usersFile
-                          << " (use --adduser <name> to create users)" << std::endl;
+                std::cerr << lang.getOr("auth_fatal", "Fatal: ") << lang.getOr(err == AuthError::UsersFileInvalid ? "auth_err_users_invalid" : err == AuthError::UsersFileUnreadable ? "auth_err_users_unreadable" : "auth_err_users_missing", errorEntry(err).message) << ": " << usersFile
+                          << lang.getOr("auth_hint_adduser", " (use --adduser <name> to create users)") << std::endl;
                 return false;
             }
             int fails = 0;
@@ -1197,7 +1239,7 @@ int main(int argc, char* argv[]) {
                     std::cerr << lang.getOr("auth_err_aborted", "%% Login aborted by user.") << std::endl;
                     return false;
                 }
-                if (Auth::verify(users, username, password, pepper)) {
+                if (!password.empty() && Auth::verify(users, username, password, pepper)) {
                     if (config.restricted_session) {
 #ifdef AETHERCLI_VAR_DIR
                         std::string sessionDir = std::string(AETHERCLI_VAR_DIR) + "/sessions";
@@ -1249,7 +1291,18 @@ int main(int argc, char* argv[]) {
         if (headless) {
             Context dummy = Context::GLOBAL;
             int cmd_status = 0;
-            executeCommand(target, config.commands, lang, dummy, configDir, 0, "", &cmd_status);
+            try {
+                executeCommand(target, config.commands, lang, dummy, configDir, 0, "", &cmd_status);
+            } catch (const ReloadException&) {
+                // Sem sessão para recarregar: vale como validação do config em disco.
+                try {
+                    loadAppConfig(configFile, configOverride, langOverride, langSource);
+                    cmd_status = fs::exists(configFile) ? 0 : 1;
+                } catch (const std::exception& e) {
+                    std::cerr << e.what() << std::endl;
+                    cmd_status = 1;
+                }
+            }
             return cmd_status;
         } else {
             while (true) {
