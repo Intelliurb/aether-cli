@@ -4,6 +4,7 @@
  */
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <thread>
@@ -179,13 +180,18 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
                     int macro_depth = 0, const std::string& prompt = "", int* out_status = nullptr) {
     if (full_input.length() > 4096) {
         std::cout << lang.getOr("cli_err_line_length", "%% Error: Command line exceeds maximum allowed length (4096 characters).") << std::endl;
+        if (out_status) *out_status = 1;
         return true;
     }
 
     auto tokens = split(full_input);
-    if (tokens.empty()) return true;
+    if (tokens.empty()) {
+        if (out_status) *out_status = 0;
+        return true;
+    }
 
     if (tokens[0] == "exit" || tokens[0] == "quit") {
+        if (out_status) *out_status = 0;
         if (ctx == Context::CONFIG) {
             ctx = Context::GLOBAL;
             std::cout << "\n" << lang.getOr("cli_msg_return_global", "Returning to GLOBAL mode.") << std::endl;
@@ -199,17 +205,19 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
     auto res = cli::completer::resolve(tree, tokens);
     if (res.ambiguous) {
         printVtyError(full_input, res.depth, prompt, withValue(lang.getOr("cli_err_ambiguous", "% Ambiguous command: \"_VALUE_\""), res.ambiguous_token));
+        if (out_status) *out_status = 1;
         return true;
     }
     if (!res.cmd) {
         printVtyError(full_input, res.depth, prompt, lang.getOr("cli_err_invalid", "% Invalid input detected at '^' marker."));
+        if (out_status) *out_status = 127;
         return true;
     }
 
     const Command& cmd = *res.cmd;
     const size_t depth = res.depth;
 
-    if (cmd.admin_only && g_current_user != "admin") {
+    if (res.requires_admin && g_current_user != "admin") {
         std::cout << "\n" << lang.getOr("cli_err_admin_only", "%% Error: Only the 'admin' user can perform this action.") << std::endl;
         if (out_status) *out_status = 1;
         return true;
@@ -225,6 +233,7 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
         } else {
             std::cout << "\n" << withValue(lang.getOr("cli_err_no_action", "% Command '_VALUE_' has no action configured."), cmd.name) << std::endl;
         }
+        if (out_status) *out_status = 1;
         return true;
     }
 
@@ -233,6 +242,7 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
     if (cmd.activation == "internal:config_mode") {
         ctx = Context::CONFIG;
         std::cout << lang.get("config_mode_msg") << std::endl;
+        if (out_status) *out_status = 0;
         return true;
     }
 
@@ -341,40 +351,78 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
 
     if (cmd.activation.rfind("internal:", 0) == 0) {
         std::cout << withValue(lang.getOr("cli_err_internal_activation", "%% Error: Unrecognized internal activation: _VALUE_"), cmd.activation) << std::endl;
+        if (out_status) *out_status = 1;
         return true;
     }
 
     // Comando shell. Tokens extras viram argumentos apenas se o comando
     // declarar "args": "append" — evita injeção de flags em comandos mapeados.
+    // Se o comando declarar "params", os tokens são validados segundo o esquema.
     std::vector<std::string> extra(tokens.begin() + depth, tokens.end());
-    if (!extra.empty() && !cmd.allow_args) {
-        std::cout << withValue(lang.getOr("cli_err_arguments", "% Command '_VALUE_' does not accept arguments (set \"args\": \"append\" in the config to allow)."), cmd.name) << std::endl;
-        return true;
-    }
+    std::vector<std::string> param_argv;
+    std::map<std::string, std::string> param_env;
 
-    // Demarcador de Fim de Opções
-    bool has_eoo = (cmd.activation.length() >= 3 && cmd.activation.substr(cmd.activation.length() - 3) == " --");
-    if (!has_eoo) {
-        for (const auto& a : extra) {
-            if (!a.empty() && a[0] == '-') {
-                std::cout << lang.getOr("cli_err_flag_arguments", "%% Error: Security violation. Extra arguments starting with '-' are forbidden unless the command activation ends with ' --'.") << std::endl;
-                return true;
+    if (!cmd.params.empty()) {
+        auto val_err = validatePositionalParams(cmd.params, extra, cmd.name, param_env, param_argv, activationEndsOptions(cmd.activation));
+        if (val_err.has_value()) {
+            std::cout << formatParamError(val_err.value(), lang) << std::endl;
+            if (out_status) *out_status = 1;
+            return true;
+        }
+    } else {
+        if (!extra.empty() && !cmd.allow_args) {
+            std::cout << withValue(lang.getOr("cli_err_arguments", "% Command '_VALUE_' does not accept arguments (set \"args\": \"append\" in the config to allow)."), cmd.name) << std::endl;
+            if (out_status) *out_status = 1;
+            return true;
+        }
+
+        // Demarcador de Fim de Opções
+        if (!activationEndsOptions(cmd.activation)) {
+            for (const auto& a : extra) {
+                if (!a.empty() && a[0] == '-') {
+                    std::cout << lang.getOr("cli_err_flag_arguments", "%% Error: Security violation. Extra arguments starting with '-' are forbidden unless the command activation ends with ' --'.") << std::endl;
+                    if (out_status) *out_status = 1;
+                    return true;
+                }
             }
         }
+        param_argv = extra;
     }
 
     Logger::info(g_current_user + ": " + full_input);
     try {
         std::string final_cmd = cmd.activation;
-        for (const auto& a : extra) {
+        for (const auto& a : param_argv) {
             final_cmd += " " + escape_shell_arg(a);
         }
+        ExecOptions opts;
+        opts.timeout_s = cmd.timeout_s;
+        opts.max_output_bytes = cmd.max_output_bytes;
+        opts.cwd = (cmd.cwd.empty() || cmd.cwd[0] == '/') ? cmd.cwd : configDir + "/" + cmd.cwd;
+        opts.env = cmd.env;
+        for (const auto& [k, v] : param_env) {
+            opts.env[k] = v;
+        }
+        if (cmd.max_output_bytes > 0) {
+            opts.capture_output = true;
+        }
+
         ExecResult r;
         {
             TerminalRestorer restorer(global_orig_termios);
-            r = CommandExecutor::executeShellCommand(final_cmd);
+            r = CommandExecutor::executeShellCommand(final_cmd, opts);
         }
-        if (r.signaled) {
+        if (opts.capture_output) {
+            std::cout << r.stdout_output;
+            std::cerr << r.stderr_output;
+            if (r.output_truncated) {
+                std::cout << "\n" << withValue(lang.getOr("cli_msg_output_truncated", "% Output truncated: exceeded limit of _VALUE_ bytes."), std::to_string(cmd.max_output_bytes)) << std::endl;
+            }
+        }
+        if (r.timed_out) {
+            std::cout << "\n" << withValue(lang.getOr("cli_msg_timeout", "% Command timed out after _VALUE_ seconds."), std::to_string(cmd.timeout_s)) << std::endl;
+            if (out_status) *out_status = 124;
+        } else if (r.signaled) {
             std::cout << withValue(lang.getOr("cli_msg_signal", "% Command terminated by signal _VALUE_."), std::to_string(r.term_signal)) << std::endl;
             if (out_status) *out_status = 128 + r.term_signal;
         } else if (r.exit_code == 127) {
@@ -403,22 +451,46 @@ void showOptions(const std::vector<Command>& tree, const std::string& current_in
 
     const Command* parent = nullptr;
     const std::vector<Command>* current_level = &tree;
+    size_t resolved_depth = 0;
     if (!tokens.empty()) {
         auto res = cli::completer::resolve(tree, tokens);
         if (res.ambiguous) {
             std::cout << "\n" << withValue(lang.getOr("cli_err_ambiguous", "% Ambiguous command: \"_VALUE_\""), res.ambiguous_token) << std::endl;
             return;
         }
-        if (!res.cmd || res.depth != tokens.size()) {
+        if (!res.cmd || (res.depth != tokens.size() && res.cmd->params.empty())) {
             std::cout << "\n" << lang.getOr("cli_err_unrecognized", "% Unrecognized command.") << std::endl;
             return;
         }
         parent = res.cmd;
+        resolved_depth = res.depth;
         current_level = &parent->subcommands;
     }
 
     if (parent && (endsWithSpace || parent->subcommands.empty())) {
         if (parent->subcommands.empty()) {
+            if (!parent->params.empty()) {
+                size_t p_idx = tokens.size() >= resolved_depth ? (tokens.size() - resolved_depth) : 0;
+                if (p_idx < parent->params.size()) {
+                    const auto& p = parent->params[p_idx];
+                    if (!p.enum_values.empty()) {
+                        auto enum_matches = cli::completer::prefixMatchStrings(p.enum_values, last_token);
+                        for (const auto& ev : (enum_matches.empty() ? p.enum_values : enum_matches)) {
+                            std::cout << "  " << std::left << std::setw(15) << ev << " " << p.description << "\n";
+                        }
+                    } else {
+                        std::string p_desc = "<" + p.name + "> (" + p.type + ")";
+                        if (!p.description.empty()) p_desc += " " + p.description;
+                        std::cout << "  " << p_desc << "\n";
+                    }
+                    if (!p.required) {
+                        std::cout << "  " << lang.getOr("help_cr", "<cr>") << "\n";
+                    }
+                } else {
+                    std::cout << "  " << lang.getOr("help_cr", "<cr>") << "\n";
+                }
+                return;
+            }
             if (parent->allow_args) {
                 if (!parent->syntax.empty()) {
                     std::cout << "  " << parent->syntax << "\n";
@@ -782,17 +854,37 @@ void runInteractive(const std::vector<Command>& commands, const std::string& lan
 
                 const std::vector<Command>* level = current_tree;
                 bool valid_prefix = true;
+                const Command* resolved_cmd = nullptr;
+                size_t resolved_depth = 0;
                 if (!tokens.empty()) {
                     auto res = cli::completer::resolve(*current_tree, tokens);
                     if (res.cmd && res.depth == tokens.size()) {
                         level = &res.cmd->subcommands;
+                        resolved_cmd = res.cmd;
+                        resolved_depth = res.depth;
+                    } else if (res.cmd && res.depth < tokens.size()) {
+                        resolved_cmd = res.cmd;
+                        resolved_depth = res.depth;
                     } else {
                         valid_prefix = false;
                     }
                 }
 
                 std::string completion;
-                if (valid_prefix) {
+                if (resolved_cmd && resolved_cmd->subcommands.empty() && !resolved_cmd->params.empty()) {
+                    size_t p_idx = tokens.size() >= resolved_depth ? (tokens.size() - resolved_depth) : 0;
+                    if (p_idx < resolved_cmd->params.size()) {
+                        const auto& p = resolved_cmd->params[p_idx];
+                        if (!p.enum_values.empty()) {
+                            auto matches = cli::completer::prefixMatchStrings(p.enum_values, last_token);
+                            if (!matches.empty()) {
+                                std::string lcp = cli::completer::longestCommonPrefixStrings(matches);
+                                completion = lcp.substr(last_token.length());
+                                if (matches.size() == 1) completion += " ";
+                            }
+                        }
+                    }
+                } else if (valid_prefix) {
                     auto matches = cli::completer::prefixMatches(*level, last_token);
                     if (!matches.empty()) {
                         // Completa até o maior prefixo comum; match único ganha
@@ -965,7 +1057,7 @@ int main(int argc, char* argv[]) {
                   << startupLang.getOr("cli_help_lang", "  -l, --lang_file  Language code or .json file (default: en)") << '\n'
                   << startupLang.getOr("cli_help_headless", "  -p               Headless mode: execute a single command") << '\n'
 #ifdef AETHERCLI_ENABLE_MCP
-                  << "  --mcp            Model Context Protocol (MCP) stdio server mode" << '\n'
+                  << startupLang.getOr("cli_help_mcp", "  --mcp            Model Context Protocol (MCP) stdio server mode") << '\n'
 #endif
                   << startupLang.getOr("cli_help_log", "  --log [path]     Enable logging (optional path)") << '\n'
                   << startupLang.getOr("cli_help_adduser", "  --adduser <name> Add/update a user in users.json (require_authentication)") << std::endl;
@@ -1009,8 +1101,20 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // A senha do MCP sai do ambiente já aqui, para nunca chegar aos filhos.
+    [[maybe_unused]] const char* env_password = std::getenv("AETHERCLI_PASSWORD");
+#ifdef AETHERCLI_ENABLE_MCP
+    const std::string mcpPassword = env_password ? env_password : "";
+    const bool hasMcpPassword = env_password != nullptr;
+#endif
+    unsetenv("AETHERCLI_PASSWORD");
+
+    // Com autenticação exigida, AETHERCLI_USER é só uma alegação: quem define o
+    // ambiente não pode escolher a própria identidade (ver doAuth).
+    const char* env_user_init = std::getenv("AETHERCLI_USER");
+    const std::string envUser = (env_user_init && std::string(env_user_init) != "-") ? env_user_init : "";
     if (!config.require_authentication) {
-        g_current_user = "admin";
+        g_current_user = envUser.empty() ? "admin" : envUser;
     }
 
     setenv("AETHERCLI_LANG", langSource.c_str(), 1);
@@ -1038,6 +1142,25 @@ int main(int argc, char* argv[]) {
         // Login antes de qualquer execução (interativa ou headless): fail closed.
         auto doAuth = [&]() -> bool {
             if (!config.require_authentication || g_current_user != "-") return true;
+#ifdef AETHERCLI_ENABLE_MCP
+            if (mcpMode) {
+                AuthError aerr = AuthError::None;
+                auto user_list = Auth::loadUsers(usersFile, aerr);
+                // Fail closed, sem o bootstrap do login interativo: não há operador
+                // no servidor, e apagar users.json não pode dar admin a um agente.
+                // O stdin é do protocolo, então a credencial vem do ambiente.
+                if (aerr != AuthError::None || envUser.empty() || !hasMcpPassword ||
+                    !Auth::verify(user_list, envUser, mcpPassword, Auth::pepperFromEnv())) {
+                    Logger::error(std::string(errorEntry(AuthError::BadCredentials).tag) + ": MCP session user '" + envUser + "'");
+                    std::cerr << lang.getOr("mcp_err_auth_required", "%% Error: MCP requires valid AETHERCLI_USER and AETHERCLI_PASSWORD when authentication is enabled.") << std::endl;
+                    return false;
+                }
+                g_current_user = envUser;
+                setenv("AETHERCLI_USER", g_current_user.c_str(), 1);
+                Logger::info(g_current_user + ": MCP session authenticated");
+                return true;
+            }
+#endif
             AuthError err = AuthError::None;
             auto users = Auth::loadUsers(usersFile, err);
             const bool bootstrapAdmin = err == AuthError::UsersFileMissing ||
@@ -1121,7 +1244,9 @@ int main(int argc, char* argv[]) {
 
         if (headless) {
             Context dummy = Context::GLOBAL;
-            executeCommand(target, config.commands, lang, dummy, configDir);
+            int cmd_status = 0;
+            executeCommand(target, config.commands, lang, dummy, configDir, 0, "", &cmd_status);
+            return cmd_status;
         } else {
             while (true) {
                 try {

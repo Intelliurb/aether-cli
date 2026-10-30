@@ -16,6 +16,7 @@ struct Resolution {
     size_t depth = 0;               // quantos tokens foram consumidos como comando
     bool ambiguous = false;         // a resolução parou por abreviação ambígua
     std::string ambiguous_token;
+    bool requires_admin = false;    // admin_only em qualquer nível do caminho
 };
 
 // Match exato tem prioridade; senão, abreviação por prefixo único (estilo
@@ -52,6 +53,7 @@ inline Resolution resolve(const std::vector<Command>& tree, const std::vector<st
             break;
         }
         r.cmd = m;
+        r.requires_admin = r.requires_admin || m->admin_only;
         level = &m->subcommands;
         ++r.depth;
     }
@@ -71,6 +73,26 @@ inline std::string longestCommonPrefix(const std::vector<const Command*>& cmds) 
     std::string lcp = cmds[0]->name;
     for (size_t i = 1; i < cmds.size(); ++i) {
         const std::string& n = cmds[i]->name;
+        size_t j = 0;
+        while (j < lcp.size() && j < n.size() && lcp[j] == n[j]) ++j;
+        lcp.resize(j);
+    }
+    return lcp;
+}
+
+inline std::vector<std::string> prefixMatchStrings(const std::vector<std::string>& candidates, const std::string& prefix) {
+    std::vector<std::string> out;
+    for (const auto& s : candidates) {
+        if (s.compare(0, prefix.size(), prefix) == 0) out.push_back(s);
+    }
+    return out;
+}
+
+inline std::string longestCommonPrefixStrings(const std::vector<std::string>& candidates) {
+    if (candidates.empty()) return "";
+    std::string lcp = candidates[0];
+    for (size_t i = 1; i < candidates.size(); ++i) {
+        const std::string& n = candidates[i];
         size_t j = 0;
         while (j < lcp.size() && j < n.size() && lcp[j] == n[j]) ++j;
         lcp.resize(j);

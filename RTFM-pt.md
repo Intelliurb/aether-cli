@@ -156,6 +156,12 @@ Por que usar Objeto-Ação?
 - `activation`: O script OS, utilitário, ou keyword interna que será disparada.
 - `admin_only`: (Opcional) Se `true`, restringe a execução exclusivamente ao usuário autenticado `admin`.
 - `args`: `"none"` (padrão) ou `"append"`. Com `"append"`, argumentos não previstos na configuração são concatenados (como tokens sanitizados) diretamente após a execução nativa da chave `activation`. Com `"none"`, sobressalentes são negados. Ver Seção 6.
+- `timeout_s`: (Opcional) Tempo máximo de execução em segundos. O grupo de processos é terminado se expirado.
+- `max_output_bytes`: (Opcional) Tamanho máximo da saída em bytes; saída excedente é truncada com aviso.
+- `cwd`: (Opcional) Diretório de trabalho para execução do comando.
+- `env`: (Opcional) Objeto JSON definindo variáveis de ambiente passadas ao comando.
+- `params`: (Opcional) Parâmetros posicionais tipados (`name`, `type`, `required`, `enum`, `pattern`, `minimum`, `maximum`, `description`); excludente com `"args": "append"`. Veja o caso de uso em `RTFM.md`.
+- `effect`, `idempotent`, `open_world`: (Opcionais) Publicados nas anotações das ferramentas MCP.
 - `subcommands`: (Opcional) Uma array que suporta recursivamente os mesmos nós hierárquicos acima.
 
 ### Exemplo de Configuração

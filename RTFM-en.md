@@ -156,6 +156,12 @@ Why use Object-Action?
 - `activation`: Operating system command or internal keyword to be executed.
 - `admin_only`: (Optional) If `true`, restricts execution strictly to the authenticated `admin` user.
 - `args`: `"none"` (default) or `"append"`. With `"append"`, extra user tokens are appended to the `activation` command, each one shell-escaped. With `"none"`, extra tokens are rejected. See section 6.
+- `timeout_s`: (Optional) Maximum execution time in seconds. Subprocess group is terminated if exceeded.
+- `max_output_bytes`: (Optional) Maximum output size in bytes; output beyond this is truncated.
+- `cwd`: (Optional) Working directory for command execution.
+- `env`: (Optional) JSON object defining environment variables passed to the command.
+- `params`: (Optional) Typed positional parameters (`name`, `type`, `required`, `enum`, `pattern`, `minimum`, `maximum`, `description`); mutually exclusive with `"args": "append"`. See the use case in `RTFM.md`.
+- `effect`, `idempotent`, `open_world`: (Optional) Published as MCP tool annotations.
 - `subcommands`: (Optional) A list of other nested commands.
 
 ### Configuration Example

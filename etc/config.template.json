@@ -37,6 +37,15 @@
   "//": "  - activation:  The shell command executed (can use ${AETHERCLI_SCRIPTS_DIR})",
   "//": "  - syntax:      Full syntax description shown in help",
   "//": "  - args:        'append' to pass trailing arguments to the shell command",
+  "//": "  - admin_only:  true to restrict execution strictly to the 'admin' user",
+  "//": "  - effect:      'read', 'write' (default), or 'destructive'",
+  "//": "  - idempotent:  true if calling with same args has no additional effect (default: false)",
+  "//": "  - open_world:  true if command interacts with external environment (default: true)",
+  "//": "  - timeout_s:   Timeout in seconds for execution (e.g. 30)",
+  "//": "  - max_output_bytes: Output limit in bytes; truncates if exceeded (e.g. 65536)",
+  "//": "  - cwd:         Working directory for the subprocess",
+  "//": "  - env:         Key-value map of environment variables passed to the subprocess",
+  "//": "  - params:      Typed parameters array (name, type, description, required, enum, minimum, maximum)",
   "//": "  - subcommands: Array of nested subcommands",
   
   "commands": [

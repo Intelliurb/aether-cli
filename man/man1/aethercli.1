@@ -2,13 +2,15 @@
 .\" mandoc -a aethercli.1
 .\" or:
 .\" man ./aethercli.1
-.TH AETHERCLI 1 "2026-10-17" "aethercli 0.6.0" "System Manager's Manual"
+.TH AETHERCLI 1 "2026-10-30" "aethercli 0.7.0" "System Manager's Manual"
 .SH NAME
 aethercli \- interactive CLI interface and command dispatcher for automation
 .SH SYNOPSIS
 \fBaethercli\fR [\fB\-C\fR \fIconfig_file\fR] [\fB\-l\fR \fIlang\fR] [\fB\-\-log\fR [\fIpath\fR]]
 .br
 \fBaethercli\fR \fB\-p\fR "\fIcommand\fR" [\fB\-C\fR \fIconfig_file\fR] [\fB\-l\fR \fIlang\fR] [\fB\-\-log\fR [\fIpath\fR]]
+.br
+\fBaethercli\fR \fB\-\-mcp\fR [\fB\-C\fR \fIconfig_file\fR] [\fB\-l\fR \fIlang\fR] [\fB\-\-log\fR [\fIpath\fR]]
 .br
 \fBaethercli\fR \fB\-\-adduser\fR \fIname\fR [\fB\-C\fR \fIconfig_file\fR]
 .br
@@ -230,12 +232,40 @@ OS command line, external script, or reserved engine directive
 (\fBinternal:reload\fR, \fBinternal:run_macro\fR, \fBinternal:config_mode\fR).
 .TP
 .B "admin_only" \fR(boolean, optional)
-If \fBtrue\fR, restricts execution strictly to the authenticated "admin" user.
+If \fBtrue\fR, restricts the command and everything below it to the authenticated "admin" user.
 .TP
 .B "args" \fR(string, default "none")
 When set to \fB"append"\fR, extra arguments typed by the user are sanitized
 and forwarded to the activation command. When set to \fB"none"\fR, unconfigured
 trailing arguments are rejected with an error.
+.TP
+.B "timeout_s" \fR(integer, optional)
+Maximum run time in seconds. The whole process group gets SIGTERM, then SIGKILL.
+Exit status 124 in headless mode.
+.TP
+.B "max_output_bytes" \fR(integer, optional)
+Per-stream output limit; excess output is discarded with a warning. In MCP mode,
+commands that do not set it are limited to 10 MiB.
+.TP
+.B "cwd" \fR(string, optional)
+Working directory. If relative, resolved against the directory of \fBconfig.json\fR.
+.TP
+.B "env" \fR(object, optional)
+Environment variables for the command.
+.TP
+.B "params" \fR(array of objects, optional)
+Typed positional parameters; mutually exclusive with \fB"args": "append"\fR.
+Fields: \fBname\fR (letters, digits and underscore, not starting with a digit),
+\fBtype\fR (\fBstring\fR, \fBinteger\fR, \fBboolean\fR), \fBrequired\fR,
+\fBenum\fR, \fBpattern\fR (ECMAScript; the whole value must match),
+\fBminimum\fR, \fBmaximum\fR, \fBdescription\fR.
+Values arrive as arguments and as \fBAETHERCLI_PARAM_\fINAME\fR variables.
+.TP
+.B "effect" \fR(string, default "write")
+\fBread\fR, \fBwrite\fR or \fBdestructive\fR; published as MCP tool annotations.
+.TP
+.B "idempotent" \fR(boolean, default false), \fB"open_world"\fR (boolean, default true)
+Published as the MCP annotations \fBidempotentHint\fR and \fBopenWorldHint\fR.
 .TP
 .B "subcommands" \fR(array of objects, optional)
 Nested list of child actions or sub-resources.
@@ -371,6 +401,51 @@ Display command-line options summary and exit.
 \fB\-v\fR, \fB\-\-version\fR
 Display version information and exit.
 
+.TP
+\fB\-\-mcp\fR
+Model Context Protocol server over stdio. Only in binaries built with
+\fB\-DAETHERCLI_ENABLE_MCP=ON\fR. See \fBMCP SERVER\fR.
+
+.SH USE CASE: VALIDATED BACKUP
+Operators and AI agents may run backups, but only for a known database and a
+retention of 1 to 90 days. In \fIconfig.json\fR:
+.PP
+.nf
+{
+  "name": "database",
+  "subcommands": [
+    {
+      "name": "backup",
+      "activation": "${AETHERCLI_SCRIPTS_DIR}/backup.sh",
+      "timeout_s": 600,
+      "params": [
+        { "name": "bank", "type": "string", "required": true,
+          "enum": ["sales", "stock"] },
+        { "name": "retention", "type": "integer", "required": true,
+          "minimum": 1, "maximum": 90 }
+      ]
+    }
+  ]
+}
+.fi
+.PP
+\fBaethercli \-p "database backup sales 7"\fR runs \fIbackup.sh sales 7\fR and
+exits with its status. \fBaethercli \-p "database backup sales 365"\fR is refused
+without running anything and exits with status 1. Through \fB\-\-mcp\fR, the same
+command is the tool \fBdatabase_backup\fR with a generated input schema.
+
+.SH MCP SERVER
+\fBaethercli \-\-mcp\fR reads one JSON-RPC message per line from standard input.
+It supports protocol revisions 2026-07-28 (per-request version in
+\fBparams._meta\fR, \fBserver/discover\fR) and 2025-11-25 (\fBinitialize\fR).
+Commands with an activation become tools named by joining the path with
+underscores; \fBinternal:\fR activations are not exposed, nor are \fBadmin_only\fR
+commands for other users. Each command gets \fI/dev/null\fR as standard input.
+.PP
+With \fBrequire_authentication\fR, the server needs valid \fBAETHERCLI_USER\fR and
+\fBAETHERCLI_PASSWORD\fR variables and otherwise exits with status 1. The bootstrap
+of the interactive login (becoming \fBadmin\fR with no users file) does not apply.
+
 .SH INTERACTIVE NAVIGATION AND SHORTCUTS
 .IP \(bu 3
 \fBTAB (1x):\fR Autocompletes token up to longest common prefix. Unique matches append a trailing space.
@@ -401,8 +476,11 @@ Fatal startup error, authentication failure, or execution abort.
 .B 2
 Command-line option syntax error or missing argument.
 .TP
+.B 124
+Command exceeded \fBtimeout_s\fR.
+.TP
 .B 127
-Command not found in operating system.
+Command not found in operating system, or unknown command.
 .TP
 .B 128+N
 Terminated by UNIX signal \fIN\fR (e.g., 130 for SIGINT/Ctrl+C).
@@ -411,7 +489,7 @@ Terminated by UNIX signal \fIN\fR (e.g., 130 for SIGINT/Ctrl+C).
 .IP \(bu 3
 \fBArgument Escaping:\fR All forwarded arguments are sanitized and escaped to prevent shell injection.
 .IP \(bu 3
-\fBFlag Injection Prevention:\fR Arguments beginning with \fB\-\fR are rejected unless \fBactivation\fR ends with \fB\ \-\-\fR.
+\fBFlag Injection Prevention:\fR Arguments and parameter values without \fBenum\fR beginning with \fB\-\fR are rejected unless \fBactivation\fR ends with \fB\ \-\-\fR.
 .IP \(bu 3
 \fBLine Length Cap:\fR Command lines exceeding 4096 bytes are blocked.
 .IP \(bu 3
@@ -443,7 +521,14 @@ Absolute path to currently active configuration file.
 Path to directory where automation scripts are resolved.
 .TP
 .B AETHERCLI_USER
-Authenticated session username.
+Authenticated session username, set for commands. As input, it selects the user
+only when authentication is off, or together with \fBAETHERCLI_PASSWORD\fR in MCP mode.
+.TP
+.B AETHERCLI_PASSWORD
+Password for MCP mode. Removed from the environment at startup and not passed to commands.
+.TP
+.B AETHERCLI_PARAM_\fINAME\fR
+Value of a declared parameter, with the name in upper case.
 .TP
 .B AETHERCLI_LANG
 Current language code.

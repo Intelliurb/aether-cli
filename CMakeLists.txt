@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14)
-project(aethercli VERSION 0.6.0)
+project(aethercli VERSION 0.7.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -119,4 +119,13 @@ if(AETHERCLI_BUILD_TESTS)
     add_test(NAME unit_tests COMMAND aethercli_tests)
     add_test(NAME security_integration
         COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_security_integration.sh $<TARGET_FILE:aethercli>)
+    if(AETHERCLI_ENABLE_MCP)
+        add_test(NAME mcp_conformance
+            COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mcp.sh $<TARGET_FILE:aethercli>)
+    endif()
+    find_program(EXPECT_BIN expect)
+    if(EXPECT_BIN)
+        add_test(NAME interactive_rawmode
+            COMMAND ${EXPECT_BIN} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_interactive.exp $<TARGET_FILE:aethercli>)
+    endif()
 endif()

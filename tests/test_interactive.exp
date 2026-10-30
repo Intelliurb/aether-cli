@@ -33,6 +33,15 @@ puts $f {{
     { "name": "set", "short_desc": "Definir" },
     { "name": "run", "short_desc": "Executar" },
     { "name": "rm", "short_desc": "Remover" },
+    { "name": "longtask", "short_desc": "Long task", "activation": "sleep 10" },
+    { "name": "service", "short_desc": "Service control",
+      "activation": "echo SERVICE_OK",
+      "params": [
+        { "name": "target", "type": "string", "description": "Target service", "required": true, "enum": ["nginx", "redis"] }
+      ]
+    },
+    { "name": "readtty", "short_desc": "Le o terminal", "activation": "echo READY_TO_READ; read x; echo GOT=$x", "timeout_s": 20 },
+    { "name": "ttyread", "short_desc": "Le /dev/tty", "activation": "echo READY_TO_READ; read x </dev/tty; echo GOT=$x" },
     { "name": "noargs", "short_desc": "Sem args", "activation": "echo NOARGS_RAN" }
   ]
 }}
@@ -100,6 +109,32 @@ want "'?' lista subcomando version" {version}
 
 send "\025"
 
+# --- Comando que le o terminal ----------------------------------------------
+# Com timeout_s o filho tem grupo proprio, que precisa ser o foreground do tty;
+# em background, o read trava.
+# Sincroniza pela saída do filho: dormir aqui não drena o PTY, o shell bloqueia
+# no repaint e o abc seria descartado pelo TCSAFLUSH do TerminalRestorer.
+send "readtty\r"
+want "filho iniciou" {READY_TO_READ}
+send "abc\r"
+want "filho le o terminal em foreground" {GOT=abc}
+settle
+send "noargs\r"
+want "shell retoma o terminal depois do filho" {NOARGS_RAN}
+settle
+
+# --- Comando que le /dev/tty com stdin redirecionado --------------------------
+# sudo e ssh pedem senha assim; fora do foreground o filho pararia para sempre.
+spawn sh -c "$BIN -C $CONF -p ttyread </dev/null"
+want "filho le /dev/tty com stdin redirecionado (inicio)" {READY_TO_READ}
+send "xyz\r"
+want "filho le /dev/tty com stdin redirecionado" {GOT=xyz}
+expect eof
+wait
+spawn $BIN -C $CONF
+want "prompt apos ttyread" {aethercli# }
+settle
+
 # --- Comando ambiguo -------------------------------------------------------
 # "r" casa run e rm.
 send "r\r"
@@ -148,6 +183,27 @@ want "ctrl+c ecoa ^C" {\^C}
 send "show version\r"
 want "shell sobrevive ao ctrl+c" {VERSION_RAN}
 settle
+
+# --- Ctrl+C interrompe comando em execucao ----------------------------------
+send "longtask\r"
+expect "executing"
+sleep 0.3
+send "\003"
+want "ctrl+c interrompe comando filho em execucao" {terminated by signal}
+settle
+
+# --- Parametros tipados e enum TAB completion (PAR-2 e PAR-3) --------------
+send "service ng\t"
+want "tab completa valor do enum" {nginx }
+send "\r"
+want "executa com parametro tipado" {SERVICE_OK}
+settle
+
+# --- Ajuda '?' para comando com parametros (PAR-3) -------------------------
+send "service ?"
+want "'?' lista informacoes de parametro" {Target service}
+send "\025"
+
 
 # --- Edicao UTF-8: backspace apaga o acento inteiro ------------------------
 # "ção" + 1 backspace deve sobrar "çã" (e nao meio byte de 'o').

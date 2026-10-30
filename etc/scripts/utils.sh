@@ -9,7 +9,7 @@ get_msg() {
     local default_msg="$2"
     if [ -f "$LANG_FILE" ]; then
         local msg
-        msg=$(jq -r ".\"$key\" // \"$default_msg\"" "$LANG_FILE" 2>/dev/null)
+        msg=$(jq -r --arg key "$key" --arg fallback "$default_msg" '.[$key] // $fallback' "$LANG_FILE" 2>/dev/null)
         if [ "$msg" != "null" ] && [ -n "$msg" ]; then
             echo "$msg"
             return
