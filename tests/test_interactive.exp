@@ -309,7 +309,9 @@ want "prompt antes da macro" {aethercli# }
 settle
 send "macro run rl.macro\r"
 want "macro recarrega" {Reloading}
-settle
+# Sincroniza pelo prompt: antes dele o shell ainda nao voltou ao raw mode, e o
+# TCSAFLUSH descartaria o que fosse digitado.
+want "prompt apos macro com reload" {aethercli# }
 send "marker\r"
 want "saida apos reload volta ao terminal" {AFTER_RELOAD_MARK}
 settle
