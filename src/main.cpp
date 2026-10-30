@@ -1141,6 +1141,12 @@ int main(int argc, char* argv[]) {
         // Login antes de qualquer execução (interativa ou headless): fail closed.
         auto doAuth = [&]() -> bool {
             if (!config.require_authentication || g_current_user != "-") return true;
+            std::string pepper;
+            if (!Auth::resolvePepper(usersFile, pepper)) {
+                Logger::error("PEPPER_INVALID: " + usersFile);
+                std::cerr << lang.getOr("auth_err_pepper", "%% Error: pepper file is missing, unsafe or invalid (it must be yours, mode 0400).") << std::endl;
+                return false;
+            }
 #ifdef AETHERCLI_ENABLE_MCP
             if (mcpMode) {
                 AuthError aerr = AuthError::None;
@@ -1149,7 +1155,7 @@ int main(int argc, char* argv[]) {
                 // no servidor, e apagar users.json não pode dar admin a um agente.
                 // O stdin é do protocolo, então a credencial vem do ambiente.
                 if (aerr != AuthError::None || envUser.empty() || !hasMcpPassword ||
-                    !Auth::verify(user_list, envUser, mcpPassword, Auth::pepperFromEnv())) {
+                    !Auth::verify(user_list, envUser, mcpPassword, pepper)) {
                     Logger::error(std::string(errorEntry(AuthError::BadCredentials).tag) + ": MCP session user '" + envUser + "'");
                     std::cerr << lang.getOr("mcp_err_auth_required", "%% Error: MCP requires valid AETHERCLI_USER and AETHERCLI_PASSWORD when authentication is enabled.") << std::endl;
                     return false;
@@ -1164,7 +1170,7 @@ int main(int argc, char* argv[]) {
             auto users = Auth::loadUsers(usersFile, err);
             const bool bootstrapAdmin = err == AuthError::UsersFileMissing ||
                 (err == AuthError::None && users.size() == 1 && users.front().username == "admin" &&
-                 Auth::verify(users, "admin", "", Auth::pepperFromEnv()));
+                 Auth::verify(users, "admin", "", pepper));
             if (bootstrapAdmin) {
                 g_current_user = "admin";
                 setenv("AETHERCLI_USER", g_current_user.c_str(), 1);
@@ -1177,7 +1183,6 @@ int main(int argc, char* argv[]) {
                           << " (use --adduser <name> to create users)" << std::endl;
                 return false;
             }
-            const std::string pepper = Auth::pepperFromEnv();
             int fails = 0;
             while (true) {
                 std::string username;

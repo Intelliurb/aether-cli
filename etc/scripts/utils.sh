@@ -20,7 +20,8 @@ get_msg() {
 
 check_write_permission() {
     local file="$1"
-    if ! touch "$file" 2>/dev/null; then
+    # Sem touch: criar um users.json vazio aqui impediria a geração do pepper.
+    if { [ -e "$file" ] && [ ! -w "$file" ]; } || { [ ! -e "$file" ] && [ ! -w "$(dirname "$file")" ]; }; then
         local msg
         msg=$(get_msg "script_no_write_perm" "%% Error: Permission denied. Cannot write to %s. Try running aethercli with sudo.")
         # Replace %s with the filename manually if printf is not guaranteed

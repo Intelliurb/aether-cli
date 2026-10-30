@@ -532,11 +532,22 @@ Arquivo de configuração mestre global.
 .I ~/.aethercli/config.json
 Arquivo de configuração local do usuário.
 .TP
+.I ~/.aethercli/pepper
+Pepper aleatório por usuário (modo \fB0400\fR). Criado pelo \fB\-\-adduser\fR junto com
+um novo \fI~/.aethercli/users.json\fR e usado só para esse arquivo. Nunca é
+sobrescrito. Apagá-lo invalida todas as senhas desse arquivo; permissão aberta ou
+outro dono impedem o login.
+.TP
 .I ~/.aethercli/history
 Arquivo de histórico de comandos da sessão.
 .TP
 .I ~/.aethercli/log/aethercli.log
 Arquivo de log padrão para auditoria de execuções.
+
+.SH SENHA INICIAL
+\fBscripts/generate\-initial\-admin.sh\fR [\fIconfig.json\fR] cria o usuário \fBadmin\fR com
+uma senha aleatória de 24 caracteres e a exibe uma única vez. Recusa rodar se o
+arquivo de usuários já existir. Defina \fBAETHERCLI_BIN\fR se \fBaethercli\fR não estiver no \fB$PATH\fR.
 
 .SH AMBIENTE
 .TP
@@ -560,7 +571,7 @@ Valor de um parâmetro declarado, com o nome em maiúsculas.
 Indica o código do idioma carregado pela interface.
 .TP
 .B AETHERCLI_PEPPER
-Chave adicional usada no cálculo criptográfico do PBKDF2 para senhas locais.
+Pepper secreto usado no PBKDF2 das senhas. Tem prioridade sobre \fI~/.aethercli/pepper\fR.
 
 .SH VEJA TAMBÉM
 .BR bash (1),

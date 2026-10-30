@@ -506,11 +506,22 @@ Default master configuration file.
 .I ~/.aethercli/config.json
 Per-user configuration file.
 .TP
+.I ~/.aethercli/pepper
+Per-user random pepper (mode \fB0400\fR). Created by \fB\-\-adduser\fR together with a
+new \fI~/.aethercli/users.json\fR and used only for that file. Never overwritten.
+Deleting it invalidates every password in that file; a file with an open mode or
+another owner denies login.
+.TP
 .I ~/.aethercli/history
 Per-user persistent history file.
 .TP
 .I ~/.aethercli/log/aethercli.log
 Default execution audit log file.
+
+.SH INITIAL PASSWORD
+\fBscripts/generate\-initial\-admin.sh\fR [\fIconfig.json\fR] creates the \fBadmin\fR user with
+a random 24-character password and prints it once. It refuses to run if the users
+file already exists. Set \fBAETHERCLI_BIN\fR if \fBaethercli\fR is not in \fB$PATH\fR.
 
 .SH ENVIRONMENT
 .TP
@@ -534,7 +545,7 @@ Value of a declared parameter, with the name in upper case.
 Current language code.
 .TP
 .B AETHERCLI_PEPPER
-Optional secret pepper used during PBKDF2 password verification.
+Secret pepper used in PBKDF2 password hashing. Takes precedence over \fI~/.aethercli/pepper\fR.
 
 .SH SEE ALSO
 .BR bash (1),

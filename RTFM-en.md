@@ -247,6 +247,10 @@ aethercli --adduser admin
 ```
 The optional `AETHERCLI_PEPPER` environment variable adds a secret pepper to the hashes; it must be set to the same value when running aethercli with authentication enabled.
 
+Without that variable, a new `users.json` in `~/.aethercli` gets its own random pepper in `~/.aethercli/pepper`, mode `0400`, created by `--adduser`. It is never overwritten, and deleting it invalidates the passwords in that file. A `users.json` that already existed, or one outside `~/.aethercli`, does not use this pepper. An open mode or another owner denies login.
+
+The file format is documented in `etc/users.json.template`, which holds no credentials and denies login if copied as is. `scripts/generate-initial-admin.sh` creates the `admin` user with a random password shown once. Keep `users.json` at mode `0600`, never commit it, and back it up together with `pepper`. Step-by-step guidance is in `RTFM.md`.
+
 ---
 
 ## 9. Dynamic Configuration (`configure terminal`)

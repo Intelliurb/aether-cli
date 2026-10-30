@@ -1,0 +1,16 @@
+{
+  "//": "Referência do formato. Não contém credenciais e, copiado como está, nega o login.",
+  "//": "Não edite hashes à mão: use 'aethercli --adduser <nome>' ou scripts/generate-initial-admin.sh.",
+  "//": "O users.json real deve ter modo 0600 e não pode ir para o controle de versão.",
+  "//": "pepper_file: true indica que os hashes dependem de ~/.aethercli/pepper. Omita nos demais casos.",
+
+  "pepper_file": true,
+  "users": [
+    {
+      "username": "<a-z ou _, depois a-z, 0-9, _ ou -; até 32 caracteres>",
+      "salt": "<16 bytes aleatórios em hexadecimal, gerados pelo --adduser>",
+      "hash": "<PBKDF2-HMAC-SHA256 de senha + pepper, 32 bytes em hexadecimal>",
+      "iterations": 600000
+    }
+  ]
+}

@@ -55,7 +55,10 @@ build/
 # Local credentials and generated development artifacts
 .env
 .env.*
-etc/users.json
+# Hashes e segredos de autenticação, em qualquer diretório
+users.json
+*.users.json
+pepper
 .ua/
 /test_*
 /modify_config.py

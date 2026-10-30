@@ -257,7 +257,8 @@ inline bool constantTimeEqual(const uint8_t* a, size_t alen, const uint8_t* b, s
 // Arquivo: <configDir>/users.json
 //   { "users": [ { "username", "salt" (hex), "hash" (hex), "iterations" } ] }
 // Hash: PBKDF2-HMAC-SHA256(senha + pepper, salt aleatório de 16 bytes).
-// Pepper: variável de ambiente AETHERCLI_PEPPER (segredo fora do arquivo).
+// Pepper: variável de ambiente AETHERCLI_PEPPER ou, para um users.json dentro de
+// ~/.aethercli, o arquivo ~/.aethercli/pepper (segredo fora do users.json).
 // ---------------------------------------------------------------------------
 struct UserRecord {
     std::string username;
@@ -268,12 +269,105 @@ struct UserRecord {
 
 // Recomendação OWASP atual para PBKDF2-HMAC-SHA256.
 inline constexpr uint32_t DEFAULT_ITERATIONS = 600000;
+inline constexpr size_t PEPPER_HEX_LENGTH = 64; // 32 bytes aleatórios em hexadecimal
 
 class Auth {
 public:
     static std::string pepperFromEnv() {
         const char* p = std::getenv("AETHERCLI_PEPPER");
         return p ? p : "";
+    }
+
+    // O arquivo de pepper só vale para o users.json do próprio usuário: um users.json
+    // compartilhado precisa do mesmo pepper para todos, o que ~/ não pode dar.
+    static std::filesystem::path userPepperPath(const std::string& usersFile) {
+        const char* home = std::getenv("HOME");
+        if (!home || !*home) return {};
+        const std::filesystem::path dir = std::filesystem::path(home) / ".aethercli";
+        std::error_code ec;
+        const auto userDir = std::filesystem::weakly_canonical(dir, ec);
+        if (ec) return {};
+        const auto usersDir = std::filesystem::weakly_canonical(std::filesystem::absolute(usersFile, ec).parent_path(), ec);
+        if (ec || userDir != usersDir) return {};
+        return dir / "pepper";
+    }
+
+    // false = arquivo presente mas inseguro ou inválido; o login precisa falhar fechado.
+    static bool readPepperFile(const std::filesystem::path& path, std::string& out) {
+        out.clear();
+        // O_NONBLOCK: um FIFO no lugar do arquivo não pode travar o login.
+        const int fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+        if (fd == -1) return errno == ENOENT;
+        struct stat st {};
+        char buf[PEPPER_HEX_LENGTH + 1];
+        ssize_t n = -1;
+        if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_uid == geteuid() && (st.st_mode & 0777) == 0400) {
+            n = ::read(fd, buf, sizeof(buf));
+        }
+        close(fd);
+        if (n != static_cast<ssize_t>(PEPPER_HEX_LENGTH)) return false;
+        out.assign(buf, static_cast<size_t>(n));
+        return fromHex(out).size() == PEPPER_HEX_LENGTH / 2;
+    }
+
+    // Um pepper perdido não se distingue de um users.json legado sem este marcador.
+    static bool usersFileRequiresPepper(const std::string& usersFile) {
+        std::ifstream in(usersFile);
+        if (!in.is_open()) return false;
+        const auto j = nlohmann::json::parse(in, nullptr, false);
+        return j.is_object() && j.contains("pepper_file") && j["pepper_file"].is_boolean() && j["pepper_file"].get<bool>();
+    }
+
+    // Variável de ambiente tem prioridade; sem nenhuma fonte, o pepper é vazio.
+    static bool resolvePepper(const std::string& usersFile, std::string& out) {
+        out.clear();
+        if (std::getenv("AETHERCLI_PEPPER")) {
+            out = pepperFromEnv();
+            return true;
+        }
+        const auto path = userPepperPath(usersFile);
+        if (path.empty()) return !usersFileRequiresPepper(usersFile);
+        if (!readPepperFile(path, out)) return false;
+        return !out.empty() || !usersFileRequiresPepper(usersFile);
+    }
+
+    // Só com users.json ainda inexistente: um pepper novo invalidaria hashes já
+    // gravados. O_EXCL nunca sobrescreve um pepper existente.
+    static bool createPepperIfNew(const std::string& usersFile) {
+        if (std::getenv("AETHERCLI_PEPPER")) return true;
+        const auto path = userPepperPath(usersFile);
+        struct stat st {};
+        if (path.empty() || (lstat(usersFile.c_str(), &st) == 0 && st.st_size > 0)) return true;
+        if (mkdir(path.parent_path().c_str(), 0700) != 0 && errno != EEXIST) return false;
+        const std::string content = toHex(randomBytes(PEPPER_HEX_LENGTH / 2));
+
+        // Temporário + link(): o pepper aparece completo e nunca sobrescreve outro,
+        // mesmo com --adduser concorrentes ou queda no meio da escrita.
+        std::string temp = path.string() + ".XXXXXX";
+        std::vector<char> tempName(temp.begin(), temp.end());
+        tempName.push_back('\0');
+        const int fd = mkstemp(tempName.data());
+        if (fd == -1) return false;
+        size_t written = 0;
+        bool ok = fchmod(fd, 0400) == 0;
+        while (ok && written < content.size()) {
+            const ssize_t n = write(fd, content.data() + written, content.size() - written);
+            if (n > 0) written += static_cast<size_t>(n);
+            else if (n < 0 && errno == EINTR) continue;
+            else ok = false;
+        }
+        if (ok) ok = fsync(fd) == 0;
+        if (close(fd) != 0) ok = false;
+        if (ok && link(tempName.data(), path.c_str()) != 0 && errno != EEXIST) ok = false;
+        unlink(tempName.data());
+        if (ok) {
+            const int dirFd = open(path.parent_path().c_str(), O_RDONLY | O_CLOEXEC);
+            if (dirFd >= 0) {
+                fsync(dirFd);
+                close(dirFd);
+            }
+        }
+        return ok;
     }
 
     static std::vector<UserRecord> loadUsers(const std::string& path, AuthError& err) {
@@ -343,7 +437,7 @@ public:
     }
 
     static bool upsertUserFile(const std::string& usersFile, const UserRecord& rec,
-                               bool& replaced, bool& recoveredMalformed) {
+                               bool& replaced, bool& recoveredMalformed, bool markPepperFile = false) {
         replaced = false;
         recoveredMalformed = false;
         nlohmann::json j = {{"users", nlohmann::json::array()}};
@@ -392,6 +486,7 @@ public:
             }
         }
         if (!replaced) j["users"].push_back(entry);
+        if (markPepperFile) j["pepper_file"] = true;
 
         std::string temp = (std::filesystem::path(usersFile).parent_path() / ".users.json.XXXXXX").string();
         if (std::filesystem::path(usersFile).parent_path().empty()) temp = "./.users.json.XXXXXX";
@@ -543,11 +638,17 @@ public:
             return false;
         }
 
-        UserRecord rec = makeRecord(username, p1, pepperFromEnv());
+        std::string pepper;
+        if (!createPepperIfNew(usersFile) || !resolvePepper(usersFile, pepper)) {
+            std::cerr << lang.getOr("auth_err_pepper", "%% Error: pepper file is missing, unsafe or invalid (it must be yours, mode 0400).") << std::endl;
+            return false;
+        }
+        UserRecord rec = makeRecord(username, p1, pepper);
 
         bool replaced = false;
         bool recoveredMalformed = false;
-        if (!upsertUserFile(usersFile, rec, replaced, recoveredMalformed)) {
+        const bool markPepperFile = !pepper.empty() && !std::getenv("AETHERCLI_PEPPER");
+        if (!upsertUserFile(usersFile, rec, replaced, recoveredMalformed, markPepperFile)) {
             std::cerr << "%% Error: cannot write " << usersFile << " (" << std::strerror(errno) << ")" << std::endl;
             return false;
         }
