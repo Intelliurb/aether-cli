@@ -704,6 +704,14 @@ status=$?
 set -e
 [ "$status" -eq 1 ]
 [ -z "$out" ]
+# A senha padrão do primeiro login não vale no servidor.
+set +e
+out=$(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"plain"}}' | AETHERCLI_USER=admin AETHERCLI_PASSWORD=admin "$BIN" -C "$AUTH_CONFIG" --mcp 2>/dev/null)
+status=$?
+set -e
+[ "$status" -eq 1 ]
+[ -z "$out" ]
+[ ! -e "$TMP_DIR/users.json" ]
 echo "  [OK] MCP sem users.json falha fechado"
 
 printf 'senha12345\nsenha12345\n' | "$BIN" -C "$AUTH_CONFIG" --adduser operador >/dev/null

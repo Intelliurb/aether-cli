@@ -1165,7 +1165,7 @@ int main(int argc, char* argv[]) {
                 // Fail closed, sem o bootstrap do login interativo: não há operador
                 // no servidor, e apagar users.json não pode dar admin a um agente.
                 // O stdin é do protocolo, então a credencial vem do ambiente.
-                if (aerr != AuthError::None || envUser.empty() || !hasMcpPassword ||
+                if (aerr != AuthError::None || envUser.empty() || !hasMcpPassword || mcpPassword.empty() ||
                     !Auth::verify(user_list, envUser, mcpPassword, pepper)) {
                     Logger::error(std::string(errorEntry(AuthError::BadCredentials).tag) + ": MCP session user '" + envUser + "'");
                     std::cerr << lang.getOr("mcp_err_auth_required", "%% Error: MCP requires valid AETHERCLI_USER and AETHERCLI_PASSWORD when authentication is enabled.") << std::endl;
@@ -1183,15 +1183,37 @@ int main(int argc, char* argv[]) {
                 (err == AuthError::None && users.size() == 1 && users.front().username == "admin" &&
                  Auth::verify(users, "admin", "", pepper));
             if (bootstrapAdmin) {
+                // Credencial de instalação: não há hash a publicar, só vale sem contas
+                // e a sessão só abre depois da troca (o --adduser exige 8+ caracteres).
+                int defaultFails = 0;
+                while (true) {
+                    std::string username, password;
+                    if (!Auth::readLineFd(username, false, lang.getOr("auth_prompt_username", "Username: ")) ||
+                        !Auth::readHiddenLine(lang.getOr("auth_prompt_password", "Password: "), password)) {
+                        std::cout << std::endl;
+                        std::cerr << lang.getOr("auth_err_aborted", "%% Login aborted by user.") << std::endl;
+                        return false;
+                    }
+                    if (username == "admin" && password == "admin") break;
+                    ++defaultFails;
+                    Logger::error(std::string(errorEntry(AuthError::BadCredentials).tag) + ": default login");
+                    std::cout << lang.getOr("auth_fail", errorEntry(AuthError::BadCredentials).message) << std::endl;
+                    if (defaultFails >= config.number_auth_fail) {
+                        std::cerr << lang.getOr("auth_locked", errorEntry(AuthError::TooManyAttempts).message) << std::endl;
+                        return false;
+                    }
+                }
+                std::cout << lang.getOr("auth_msg_default_change", "Default password in use: set a new admin password now.") << std::endl;
+                if (!Auth::addUser(usersFile, "admin", lang, err == AuthError::UsersFileMissing)) return false;
                 g_current_user = "admin";
                 setenv("AETHERCLI_USER", g_current_user.c_str(), 1);
-                Logger::info("admin: bootstrap login");
+                Logger::info("admin: default password changed");
                 return true;
             }
             if (err != AuthError::None) {
                 Logger::error(std::string(errorEntry(err).tag) + ": " + usersFile);
-                std::cerr << lang.getOr("auth_fatal", "Fatal: ") << lang.getOr(err == AuthError::UsersFileInvalid ? "auth_err_users_invalid" : "auth_err_users_missing", errorEntry(err).message) << ": " << usersFile
-                          << " (use --adduser <name> to create users)" << std::endl;
+                std::cerr << lang.getOr("auth_fatal", "Fatal: ") << lang.getOr(err == AuthError::UsersFileInvalid ? "auth_err_users_invalid" : err == AuthError::UsersFileUnreadable ? "auth_err_users_unreadable" : "auth_err_users_missing", errorEntry(err).message) << ": " << usersFile
+                          << lang.getOr("auth_hint_adduser", " (use --adduser <name> to create users)") << std::endl;
                 return false;
             }
             int fails = 0;
@@ -1208,7 +1230,7 @@ int main(int argc, char* argv[]) {
                     std::cerr << lang.getOr("auth_err_aborted", "%% Login aborted by user.") << std::endl;
                     return false;
                 }
-                if (Auth::verify(users, username, password, pepper)) {
+                if (!password.empty() && Auth::verify(users, username, password, pepper)) {
                     if (config.restricted_session) {
 #ifdef AETHERCLI_VAR_DIR
                         std::string sessionDir = std::string(AETHERCLI_VAR_DIR) + "/sessions";

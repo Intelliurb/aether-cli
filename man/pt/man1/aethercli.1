@@ -456,8 +456,11 @@ usuário, inclusive \fBadmin\fR. Cada comando
 recebe \fI/dev/null\fR como entrada padrão.
 .PP
 Com \fBrequire_authentication\fR, o servidor exige \fBAETHERCLI_USER\fR e
-\fBAETHERCLI_PASSWORD\fR válidos e, caso contrário, termina com status 1. O bootstrap
-do login interativo (entrar como \fBadmin\fR sem arquivo de usuários) não vale aqui.
+\fBAETHERCLI_PASSWORD\fR válidos e, caso contrário, termina com status 1. A senha
+padrão do primeiro login não vale aqui.
+.PP
+Sem arquivo de usuários, o primeiro login interativo ou com \fB\-p\fR é \fBadmin\fR com
+a senha \fBadmin\fR, e a sessão só abre depois de definir uma nova senha.
 
 .SH NAVEGAÇÃO E RECURSOS INTERATIVOS
 .IP \(bu 3

@@ -280,7 +280,9 @@ aethercli --adduser admin
 ```
 A variável superposta ambiente (env var) `AETHERCLI_PEPPER` acopla um tempero fixo que é digerido sobre a chave durante a maturação do bloco `PBKDF2`. Ela deve ser fixada identicamente tanto durante execuções headless (--adduser) como durante a carga viva de login das shell's configuradas.
 
-Sem essa variável, um `users.json` novo em `~/.aethercli` ganha um pepper aleatório próprio em `~/.aethercli/pepper`, modo `0400`, criado pelo `--adduser`. Ele nunca é sobrescrito, e apagá-lo invalida as senhas desse arquivo. Um `users.json` que já existia, ou um arquivo fora de `~/.aethercli`, não usa esse pepper. Permissão aberta ou outro dono impedem o login.
+Sem arquivo de usuários, o primeiro login é `admin` com a senha `admin`, e a sessão só abre depois de definir uma nova senha.
+
+Sem essa variável, um `users.json` novo em `~/.aethercli` ganha um pepper aleatório próprio em `~/.aethercli/pepper`, modo `0400`, criado pelo `--adduser` ou pelo primeiro login. Ele nunca é sobrescrito, e apagá-lo invalida as senhas desse arquivo. Um `users.json` que já existia, ou um arquivo fora de `~/.aethercli`, não usa esse pepper. Permissão aberta ou outro dono impedem o login.
 
 O formato está em `etc/users.json.template`, que não contém credenciais e nega o login se copiado como está. `scripts/generate-initial-admin.sh` cria o `admin` com uma senha aleatória exibida uma única vez. Mantenha o `users.json` em modo `0600`, nunca o versione e faça backup dele junto com o `pepper`. O passo a passo está em `RTFM.md`.
 
