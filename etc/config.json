@@ -9,25 +9,25 @@
         {
           "name": "disk",
           "short_desc": "Uso dos sistemas de arquivos",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-system-disk.sh",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/system-disk.sh",
           "syntax": "system disk"
         },
         {
           "name": "memory",
           "short_desc": "Uso de memória",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-system-memory.sh",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/system-memory.sh",
           "syntax": "system memory"
         },
         {
           "name": "cpu",
           "short_desc": "Uso de CPU",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-system-cpu.sh",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/system-cpu.sh",
           "syntax": "system cpu"
         },
         {
           "name": "version",
           "short_desc": "Versão do sistema",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-version.sh",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/system-version.sh",
           "syntax": "system version"
         },
         {
@@ -45,13 +45,13 @@
         {
           "name": "interface",
           "short_desc": "Endereços IPv4 e máscaras das interfaces",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-ip-interface.sh",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/network-interface.sh",
           "syntax": "network interface",
           "subcommands": [
             {
               "name": "statistics",
               "short_desc": "Estatísticas de tráfego das interfaces",
-              "activation": "${AETHERCLI_SCRIPTS_DIR}/show-ip-interface-statistics.sh",
+              "activation": "${AETHERCLI_SCRIPTS_DIR}/network-interface-statistics.sh",
               "syntax": "network interface statistics"
             }
           ]
@@ -59,13 +59,13 @@
         {
           "name": "route",
           "short_desc": "Tabela de roteamento",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-ip-route.sh",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/network-route.sh",
           "syntax": "network route"
         },
         {
           "name": "listening",
           "short_desc": "Portas TCP e UDP em escuta",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-network-listening.sh",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/network-listening.sh",
           "syntax": "network listening"
         }
       ]
@@ -84,7 +84,7 @@
         {
           "name": "find",
           "short_desc": "Localizar arquivos por padrão",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/find-files.sh",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/file-find.sh",
           "syntax": "file find <pattern> [directory]",
           "args": "append"
         }
@@ -110,13 +110,13 @@
         {
           "name": "show",
           "short_desc": "Exibe a configuração do app",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-config.sh",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/settings-show.sh",
           "syntax": "settings show"
         },
         {
           "name": "tree",
           "short_desc": "Exibe a árvore de comandos",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-commands.sh",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/settings-tree.sh",
           "syntax": "settings tree"
         }
       ]
