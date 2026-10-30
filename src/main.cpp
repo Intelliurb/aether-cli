@@ -312,7 +312,16 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
             std::cout << prompt << mCmd << "\n";
             std::cout << std::flush;
             int step_status = 0;
-            bool handled = executeCommand(mCmd, tree, lang, ctx, configDir, macro_depth + 1, prompt, &step_status);
+            bool handled = true;
+            try {
+                handled = executeCommand(mCmd, tree, lang, ctx, configDir, macro_depth + 1, prompt, &step_status);
+            } catch (const ReloadException&) {
+                // Reload encerra a macro: com passos pendentes, eles não rodariam e o
+                // status final mentiria sucesso.
+                if (&mCmd == &macroCommands->back()) throw;
+                std::cout << lang.getOr("macro_err_reload_last", "%% Error: reload must be the last line of a macro.") << std::endl;
+                step_status = 1;
+            }
             if (!handled || step_status != 0) {
                 if (!handled) step_status = 127;
                 std::cout << withValue(lang.getOr("macro_err_aborted", "%% Macro aborted due to error at: _VALUE_"), mCmd) << std::endl;
@@ -1282,7 +1291,18 @@ int main(int argc, char* argv[]) {
         if (headless) {
             Context dummy = Context::GLOBAL;
             int cmd_status = 0;
-            executeCommand(target, config.commands, lang, dummy, configDir, 0, "", &cmd_status);
+            try {
+                executeCommand(target, config.commands, lang, dummy, configDir, 0, "", &cmd_status);
+            } catch (const ReloadException&) {
+                // Sem sessão para recarregar: vale como validação do config em disco.
+                try {
+                    loadAppConfig(configFile, configOverride, langOverride, langSource);
+                    cmd_status = fs::exists(configFile) ? 0 : 1;
+                } catch (const std::exception& e) {
+                    std::cerr << e.what() << std::endl;
+                    cmd_status = 1;
+                }
+            }
             return cmd_status;
         } else {
             while (true) {

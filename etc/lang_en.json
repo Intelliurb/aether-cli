@@ -54,6 +54,7 @@
   "cli_err_too_many_params": "%% Error: Too many arguments provided for command '_VALUE_'.",
   "help_args": "<args>",
   "help_cr": "<cr>",
+  "macro_err_reload_last": "%% Error: reload must be the last line of a macro.",
   "macro_err_missing_file": "%% Error: Missing macro filename.",
   "macro_err_depth": "%% Error: Macro recursion limit (_VALUE_) reached.",
   "macro_msg_loading": "% Loading macro: _VALUE_",

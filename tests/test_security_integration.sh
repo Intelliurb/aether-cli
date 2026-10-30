@@ -322,3 +322,48 @@ status=$?
 set -e
 [ "$status" -eq 1 ]
 assert_absent "$output" 'EMPTY_RAN'
+
+# reload em -p valida o config e termina normalmente, inclusive dentro de macro.
+output=$(HOME="$TMP_DIR/outro-home" "$BIN" -C "$DEFAULT_CONFIG" -p 'configure terminal reload' 2>&1)
+assert_absent "$output" 'Fatal'
+HEADLESS_DIR="$TMP_DIR/headless-reload"
+mkdir -p "$HEADLESS_DIR"
+cp "$DEFAULT_CONFIG" "$HEADLESS_DIR/config.json"
+printf 'configure terminal reload\n' > "$HEADLESS_DIR/rl.macro"
+output=$(HOME="$TMP_DIR/outro-home" "$BIN" -C "$HEADLESS_DIR/config.json" -p 'macro run rl.macro' 2>&1)
+assert_absent "$output" 'Fatal'
+
+# Passos depois do reload não podem virar falso sucesso, nem em macro aninhada.
+reload_rejected() {
+    set +e
+    output=$(HOME="$TMP_DIR/outro-home" "$BIN" -C "$HEADLESS_CONFIG" -p "macro run $1" 2>&1)
+    status=$?
+    set -e
+    [ "$status" -ne 0 ]
+    assert_absent "$output" 'AFTER_RAN'
+    assert_absent "$output" 'Fatal'
+}
+HEADLESS_CONFIG="$HEADLESS_DIR/h.json"
+cat << 'CFG' > "$HEADLESS_CONFIG"
+{ "commands": [
+    { "name": "after", "activation": "echo AFTER_RAN" },
+    { "name": "breakit", "activation": "echo 'nao e json' > \"$AETHERCLI_CONFIG\"" },
+    { "name": "removeit", "activation": "rm -f \"$AETHERCLI_CONFIG\"" },
+    { "name": "macro", "subcommands": [ { "name": "run", "activation": "internal:run_macro", "args": "append" } ] },
+    { "name": "configure", "subcommands": [ { "name": "terminal", "activation": "internal:config_mode", "subcommands": [
+        { "name": "reload", "activation": "internal:reload" } ] } ] }
+] }
+CFG
+cp "$HEADLESS_CONFIG" "$HEADLESS_DIR/h.orig"
+printf 'configure terminal reload\nafter\n' > "$HEADLESS_DIR/mid.macro"
+reload_rejected mid.macro
+printf 'macro run rl.macro\nafter\n' > "$HEADLESS_DIR/outer.macro"
+reload_rejected outer.macro
+
+# Config inválido ou apagado no momento do reload dá status de erro.
+printf 'breakit\nconfigure terminal reload\n' > "$HEADLESS_DIR/broken.macro"
+reload_rejected broken.macro
+cp "$HEADLESS_DIR/h.orig" "$HEADLESS_CONFIG"
+printf 'removeit\nconfigure terminal reload\n' > "$HEADLESS_DIR/gone.macro"
+reload_rejected gone.macro
+cp "$HEADLESS_DIR/h.orig" "$HEADLESS_CONFIG"

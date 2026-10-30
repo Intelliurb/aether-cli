@@ -54,6 +54,7 @@
   "cli_err_too_many_params": "%% Erro: Argumentos em excesso fornecidos para o comando '_VALUE_'.",
   "help_args": "<argumentos>",
   "help_cr": "<enter>",
+  "macro_err_reload_last": "%% Erro: reload deve ser a última linha da macro.",
   "macro_err_missing_file": "%% Erro: nome do arquivo de macro ausente.",
   "macro_err_depth": "%% Erro: limite de recursão de macro (_VALUE_) atingido.",
   "macro_msg_loading": "% Carregando macro: _VALUE_",
