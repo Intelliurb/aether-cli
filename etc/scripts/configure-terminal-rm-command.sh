@@ -10,7 +10,7 @@ check_write_permission "$AETHERCLI_CONFIG"
 
 if [ "$#" -ne 1 ]; then
     get_msg "script_rm_cmd_usage" "Usage: rm command <command_path>"
-    get_msg "script_rm_cmd_example" "  Example: rm command /show/ip"
+    get_msg "script_rm_cmd_example" "  Example: rm command /network/route"
     exit 1
 fi
 
@@ -64,7 +64,7 @@ jq --arg path "$CMD_PATH" '
 ' "$AETHERCLI_CONFIG" > "$TMP_FILE"
 
 if [ $? -eq 0 ] && mv "$TMP_FILE" "$AETHERCLI_CONFIG"; then
-    get_msg "script_cmd_removed" "Command removed successfully. Run 'reload conf' to apply."
+    get_msg "script_cmd_removed" "Command removed successfully. Run 'reload' to apply."
 else
     rm -f "$TMP_FILE"
     get_msg "script_cmd_error" "Error: Failed to modify config file."

@@ -50,7 +50,7 @@ Se o arquivo de configuração não existir, o aethercli imprimirá um aviso e i
 
 ### Modo Headless (Automação)
 ```bash
-aethercli -p "show version"
+aethercli -p "system version"
 ```
 
 ### Servidor MCP (Model Context Protocol)
@@ -119,9 +119,9 @@ O aethercli usa um sistema de interação imediata:
 - **TAB (1x):** Autocompleta o token atual até o prefixo comum mais longo das correspondências; correspondências únicas são completadas inteiramente (acrescentando um espaço). Caso não haja opções, tocará a campainha do terminal.
 - **TAB (2x):** Mostra instantaneamente as opções disponíveis para o nível atual.
 - **Interrogação (?):** Mostra instantaneamente as opções disponíveis sem necessidade de pressionar ENTER. Dentro de aspas duplas, o `?` é digitado de forma literal.
-- **Abreviações:** Qualquer prefixo único (não ambíguo) funciona como o comando inteiro (`sh ip ro` = `show ip route`). Abreviações ambíguas relatarão `% Ambiguous command`.
+- **Abreviações:** Qualquer prefixo único (não ambíguo) funciona como o comando inteiro (`net ro` = `network route`). Abreviações ambíguas relatarão `% Ambiguous command`.
 - **ENTER:** Executa o comando. Sinais e códigos de saída diferentes de zero do comando subjacente são relatados.
-- **reload conf:** Recarrega a quente (hot-reload) o arquivo de configuração (`config.json`), a base de usuários e arquivos de idiomas direto na memória, sem necessidade de reiniciar o shell interativo.
+- **reload (`configure terminal`):** Recarrega a quente (hot-reload) o arquivo de configuração (`config.json`), a base de usuários e arquivos de idiomas direto na memória, sem necessidade de reiniciar o shell interativo.
 - **exit / quit / Ctrl+D (linha vazia):** Sai do modo de configuração ou termina o programa. As configurações do terminal são restauradas na saída, incluindo sinais SIGINT/SIGTERM/SIGHUP.
 - **Ctrl+C:** No prompt, limpa a linha atual. Quando um comando subjacente estiver rodando, interrompe apenas aquele comando — o shell em si continua vivo.
 
@@ -148,7 +148,7 @@ Macros são arquivos texto puros terminados com `.macro`. Cada linha é executad
 
 1. A engine procura arquivos de texto puro, geralmente com extensão `.macro`, armazenados no seu diretório de configurações (ex: `~/.aethercli/`).
 2. Você pode rodar o comando `list macros` (ou `configure terminal` -> `list macros`) para ver o que tem disponível lá.
-3. Quando você chama `run macro meuarquivo.macro`, a engine abre esse arquivo e "digita" os comandos linha por linha na própria shell, como se fosse o usuário operando o teclado. Ele redireciona essas linhas direto pro loop de execução nativo (`executeCommand`).
+3. Quando você chama `macro run meuarquivo.macro`, a engine abre esse arquivo e "digita" os comandos linha por linha na própria shell, como se fosse o usuário operando o teclado. Ele redireciona essas linhas direto pro loop de execução nativo (`executeCommand`).
 4. Existe até uma proteção estrita contra recursão (um limitador `MAX_MACRO_DEPTH`) no código, para impedir que você crie um macro que chame a si próprio infinitamente e trave o AetherCLI num loop.
 
 **Valor real e Exemplo Prático:**
@@ -160,12 +160,11 @@ add user john
 add user jane
 set language portuguese-brasil
 set statusbar on
-reload conf
 exit
 ```
 
 E então aplicar todos os passos automaticamente rodando:
-`aethercli# run macro setup_inicial.macro`
+`aethercli# macro run setup_inicial.macro`
 
 ---
 
@@ -214,7 +213,7 @@ Por que usar Objeto-Ação?
           "name": "disk",
           "short_desc": "Uso de disco",
           "activation": "df -h",
-          "syntax": "show disk [path]",
+          "syntax": "system disk [path]",
           "args": "append"
         }
       ]
@@ -308,14 +307,14 @@ Manipule as raízes e subcomandos do `config.json` sem sair para interfaces exte
 
 - **`add command <parent_path> <name> <short_desc> [activation] [syntax]`**
   Anexa e encorpa a árvore JSON alistando uma rotina inteiramente nova.
-  *Sintaxe na prática:* `add command /show "disk" "Show disk usage" "df -h" "show disk"`
+  *Sintaxe na prática:* `add command /system "usage" "Show disk usage" "df -h" "system usage"`
   *(Em cenários que objetivam crescer na árvore mestra e base, submeta o alvo `/` vazio na chave de parent path).*
 
 - **`rm command <command_path>`**
   Descola e poda a raiz da diretiva selecionada para a morte.
-  *Sintaxe na prática:* `rm command /show/disk`
+  *Sintaxe na prática:* `rm command /system/usage`
 
-> **Note:** Ao executar transições modulares na raiz mestra com essas features dinâmicas acimas (seja via *add/rm command* ou via reset no idioma *set language*), consolide e espelhe essas mutações à execução viva sem perder sessão através de seu chamador `reload conf`.
+> **Note:** Ao executar transições modulares na raiz mestra com essas features dinâmicas acimas (seja via *add/rm command* ou via reset no idioma *set language*), consolide e espelhe essas mutações à execução viva sem perder sessão através de seu chamador `reload`.
 
 ---
 *aethercli v0.5.0 - Segurança, Hierarquia, Autenticação, AI e Mutabilidade Dinâmica Config Implemented*

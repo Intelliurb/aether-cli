@@ -274,6 +274,23 @@ send "errada2\r"
 want "estouro de tentativas encerra" {too many failed login attempts}
 expect eof
 
+# --- Arvore padrao: reload fica dentro de configure --------------------------
+set DEFAULT_CONF [file normalize [file join [file dirname [info script]] .. etc config.json]]
+spawn $BIN -C $DEFAULT_CONF
+want "prompt da arvore padrao" {aethercli# }
+settle
+send "reload\r"
+want "reload fora de configure e invalido" {Invalid input}
+settle
+send "configure terminal\r"
+want "entra em configure" {config\)# }
+settle
+send "reload\r"
+want "reload dentro de configure" {Reloading}
+want "prompt apos reload" {aethercli# }
+send "\004"
+expect eof
+
 # --- Resultado -------------------------------------------------------------
 file delete -force $SANDBOX
 puts ""

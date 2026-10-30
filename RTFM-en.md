@@ -50,7 +50,7 @@ If the configuration file does not exist, aethercli prints a warning and starts 
 
 ### Headless Mode (Automation)
 ```bash
-aethercli -p "show version"
+aethercli -p "system version"
 ```
 
 ### MCP Server (Model Context Protocol)
@@ -119,9 +119,9 @@ aethercli uses an immediate interaction system:
 - **TAB (1x):** Completes the current token up to the longest common prefix of the matches; a unique match is completed in full (plus a trailing space). No possible completion rings the terminal bell.
 - **TAB (2x):** Instantly shows available options for the current level.
 - **Question Mark (?):** Instantly shows available options without needing to press ENTER. Inside an open double quote, `?` is inserted literally.
-- **Abbreviations:** Any unambiguous prefix works as the full command (`sh ip ro` = `show ip route`). Ambiguous abbreviations are reported (`% Ambiguous command`).
+- **Abbreviations:** Any unambiguous prefix works as the full command (`net ro` = `network route`). Ambiguous abbreviations are reported (`% Ambiguous command`).
 - **ENTER:** Executes the command. Non-zero exit codes and signals of the underlying command are reported.
-- **reload conf:** Hot-reloads the configuration file (`config.json`), user database, and language files into memory without restarting the current interactive shell.
+- **reload (`configure terminal`):** Hot-reloads the configuration file (`config.json`), user database, and language files into memory without restarting the current interactive shell.
 - **exit / quit / Ctrl+D (empty line):** Exits configuration mode or terminates the program. Terminal settings are restored on exit, including on SIGINT/SIGTERM/SIGHUP.
 - **Ctrl+C:** In the prompt, clears the current line. While a command is running, interrupts only that command — the shell keeps running.
 
@@ -148,7 +148,7 @@ Macros are simple text files with the `.macro` extension. Each line is executed 
 
 1. The engine looks for plain text files, usually with the `.macro` extension, stored in your configuration directory (e.g., `~/.aethercli/`).
 2. You can run the command `list macros` (or `configure terminal` -> `list macros`) to see what is available.
-3. When you run `run macro my_script.macro`, the engine opens the file and "types" the commands line-by-line into the shell, just as if a user were operating the keyboard. It feeds these lines directly into the native execution loop (`executeCommand`).
+3. When you run `macro run my_script.macro`, the engine opens the file and "types" the commands line-by-line into the shell, just as if a user were operating the keyboard. It feeds these lines directly into the native execution loop (`executeCommand`).
 4. There is a strict safeguard against recursion (a `MAX_MACRO_DEPTH` limiter) in the source code to prevent a macro from calling itself indefinitely and locking the system in an infinite loop.
 
 **Practical Use Case and Example:**
@@ -160,12 +160,11 @@ add user john
 add user jane
 set language portuguese-brasil
 set statusbar on
-reload conf
 exit
 ```
 
 And then apply all steps automatically by running:
-`aethercli# run macro initial_setup.macro`
+`aethercli# macro run initial_setup.macro`
 
 ---
 
@@ -214,7 +213,7 @@ Why use Object-Action?
           "name": "disk",
           "short_desc": "Disk usage",
           "activation": "df -h",
-          "syntax": "show disk [path]",
+          "syntax": "system disk [path]",
           "args": "append"
         }
       ]
@@ -308,14 +307,14 @@ You can safely mutate `config.json` via the shell, directly expanding or pruning
 
 - **`add command <parent_path> <name> <short_desc> [activation] [syntax]`**
   Injects a new command into the CLI.
-  *Example:* `add command /show "disk" "Show disk usage" "df -h" "show disk"`
+  *Example:* `add command /system "usage" "Show disk usage" "df -h" "system usage"`
   *(If appending to the root, use `/` as `parent_path`)*
 
 - **`rm command <command_path>`**
   Removes an existing command/branch from the CLI.
-  *Example:* `rm command /show/disk`
+  *Example:* `rm command /system/usage`
 
-> **Note:** After running any dynamic configuration command (add/rm command, set language), run `reload conf` to hot-swap the internal state in memory so the changes take immediate effect.
+> **Note:** After running any dynamic configuration command (add/rm command, set language), run `reload` to hot-swap the internal state in memory so the changes take immediate effect.
 
 ---
 *aethercli v0.5.0 - Security, Hierarchy, Macros, Authentication, Dynamic Config, and AI Implemented*

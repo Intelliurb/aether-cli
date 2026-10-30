@@ -3,109 +3,121 @@
   "scripts_dir": "scripts",
   "commands": [
     {
-      "name": "show",
-      "abbrev": "sh",
-      "short_desc": "Exibir informações do sistema",
+      "name": "system",
+      "short_desc": "Recursos e informações do sistema",
       "subcommands": [
         {
-          "name": "ip",
-          "short_desc": "Informações de rede IP",
-          "subcommands": [
-            {
-              "name": "interface",
-              "short_desc": "Endereços IPv4 e máscaras das interfaces",
-              "activation": "${AETHERCLI_SCRIPTS_DIR}/show-ip-interface.sh",
-              "syntax": "show ip interface",
-              "subcommands": [
-                {
-                  "name": "statistics",
-                  "short_desc": "Estatísticas de tráfego das interfaces",
-                  "activation": "${AETHERCLI_SCRIPTS_DIR}/show-ip-interface-statistics.sh",
-                  "syntax": "show ip interface statistics"
-                }
-              ]
-            },
-            {
-              "name": "route",
-              "short_desc": "Tabela de roteamento",
-              "activation": "${AETHERCLI_SCRIPTS_DIR}/show-ip-route.sh",
-              "syntax": "show ip route"
-            }
-          ]
+          "name": "disk",
+          "short_desc": "Uso dos sistemas de arquivos",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-system-disk.sh",
+          "syntax": "system disk"
         },
         {
-          "name": "system",
-          "short_desc": "Uso de recursos do sistema",
-          "subcommands": [
-            {
-              "name": "disk",
-              "short_desc": "Uso dos sistemas de arquivos",
-              "activation": "${AETHERCLI_SCRIPTS_DIR}/show-system-disk.sh",
-              "syntax": "show system disk"
-            },
-            {
-              "name": "memory",
-              "short_desc": "Uso de memória",
-              "activation": "${AETHERCLI_SCRIPTS_DIR}/show-system-memory.sh",
-              "syntax": "show system memory"
-            },
-            {
-              "name": "cpu",
-              "short_desc": "Uso de CPU",
-              "activation": "${AETHERCLI_SCRIPTS_DIR}/show-system-cpu.sh",
-              "syntax": "show system cpu"
-            }
-          ]
+          "name": "memory",
+          "short_desc": "Uso de memória",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-system-memory.sh",
+          "syntax": "system memory"
         },
         {
-          "name": "network",
-          "short_desc": "Informações de rede",
-          "subcommands": [
-            {
-              "name": "listening",
-              "short_desc": "Portas TCP e UDP em escuta",
-              "activation": "${AETHERCLI_SCRIPTS_DIR}/show-network-listening.sh",
-              "syntax": "show network listening"
-            }
-          ]
-        },
-        {
-          "name": "files",
-          "short_desc": "Listar arquivos",
-          "activation": "ls -la",
-          "syntax": "show files [path]",
-          "args": "append"
+          "name": "cpu",
+          "short_desc": "Uso de CPU",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-system-cpu.sh",
+          "syntax": "system cpu"
         },
         {
           "name": "version",
           "short_desc": "Versão do sistema",
           "activation": "${AETHERCLI_SCRIPTS_DIR}/show-version.sh",
-          "syntax": "show version"
+          "syntax": "system version"
         },
         {
-          "name": "config",
-          "short_desc": "Exibe a configuração do app",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-config.sh",
-          "syntax": "show config"
-        },
-        {
-          "name": "commands",
-          "short_desc": "Exibe a árvore de comandos",
-          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-commands.sh",
-          "syntax": "show commands"
+          "name": "time",
+          "short_desc": "Mostrar a hora (atualizado)",
+          "activation": "date",
+          "syntax": "system time"
         }
       ]
     },
     {
-      "name": "find",
-      "short_desc": "Localizar recursos",
+      "name": "network",
+      "short_desc": "Informações de rede",
       "subcommands": [
         {
-          "name": "files",
+          "name": "interface",
+          "short_desc": "Endereços IPv4 e máscaras das interfaces",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-ip-interface.sh",
+          "syntax": "network interface",
+          "subcommands": [
+            {
+              "name": "statistics",
+              "short_desc": "Estatísticas de tráfego das interfaces",
+              "activation": "${AETHERCLI_SCRIPTS_DIR}/show-ip-interface-statistics.sh",
+              "syntax": "network interface statistics"
+            }
+          ]
+        },
+        {
+          "name": "route",
+          "short_desc": "Tabela de roteamento",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-ip-route.sh",
+          "syntax": "network route"
+        },
+        {
+          "name": "listening",
+          "short_desc": "Portas TCP e UDP em escuta",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-network-listening.sh",
+          "syntax": "network listening"
+        }
+      ]
+    },
+    {
+      "name": "file",
+      "short_desc": "Arquivos",
+      "subcommands": [
+        {
+          "name": "list",
+          "short_desc": "Listar arquivos",
+          "activation": "ls -la",
+          "syntax": "file list [path]",
+          "args": "append"
+        },
+        {
+          "name": "find",
           "short_desc": "Localizar arquivos por padrão",
           "activation": "${AETHERCLI_SCRIPTS_DIR}/find-files.sh",
-          "syntax": "find files <pattern> [directory]",
+          "syntax": "file find <pattern> [directory]",
           "args": "append"
+        }
+      ]
+    },
+    {
+      "name": "macro",
+      "short_desc": "Macros",
+      "subcommands": [
+        {
+          "name": "run",
+          "short_desc": "Executar arquivo .macro",
+          "activation": "internal:run_macro",
+          "syntax": "macro run <arquivo.macro>",
+          "args": "append"
+        }
+      ]
+    },
+    {
+      "name": "settings",
+      "short_desc": "Configuração em uso",
+      "subcommands": [
+        {
+          "name": "show",
+          "short_desc": "Exibe a configuração do app",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-config.sh",
+          "syntax": "settings show"
+        },
+        {
+          "name": "tree",
+          "short_desc": "Exibe a árvore de comandos",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/show-commands.sh",
+          "syntax": "settings tree"
         }
       ]
     },
@@ -242,41 +254,16 @@
                   "syntax": "show whoami"
                 }
               ]
+            },
+            {
+              "name": "reload",
+              "short_desc": "Recarrega o arquivo de configuração e o idioma na memória",
+              "activation": "internal:reload",
+              "syntax": "reload"
             }
           ]
         }
       ]
-    },
-    {
-      "name": "run",
-      "short_desc": "Executar macros",
-      "subcommands": [
-        {
-          "name": "macro",
-          "short_desc": "Executar arquivo .macro",
-          "activation": "internal:run_macro",
-          "syntax": "run macro <arquivo.macro>",
-          "args": "append"
-        }
-      ]
-    },
-    {
-      "name": "reload",
-      "short_desc": "Recarregar configurações",
-      "subcommands": [
-        {
-          "name": "conf",
-          "short_desc": "Recarrega o arquivo de configuração e o idioma na memória",
-          "activation": "internal:reload",
-          "syntax": "reload conf"
-        }
-      ]
-    },
-    {
-      "name": "time",
-      "short_desc": "Mostrar a hora (atualizado)",
-      "activation": "date",
-      "syntax": "time"
     }
   ]
 }

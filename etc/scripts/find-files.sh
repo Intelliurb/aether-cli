@@ -3,7 +3,7 @@ DIR=$(dirname "$0")
 . "$DIR/utils.sh"
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-    get_msg "script_find_usage" "Usage: find files <pattern> [directory]"
+    get_msg "script_find_usage" "Usage: file find <pattern> [directory]"
     exit 1
 fi
 

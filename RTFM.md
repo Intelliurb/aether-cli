@@ -205,22 +205,22 @@ Crie o arquivo no mesmo diretório do `config.json` em uso:
 
 ```text
 # inventário diário
-show system disk
-show system memory
-show ip interface
+system disk
+system memory
+network interface
 ```
 
 Salve, por exemplo, como `inventario.macro` e execute:
 
 ```text
-aethercli# run macro inventario.macro
+aethercli# macro run inventario.macro
 ```
 
 Um caminho relativo é resolvido a partir do diretório do arquivo de
 configuração; um caminho absoluto também é aceito:
 
 ```text
-aethercli# run macro /opt/aethercli/inventario.macro
+aethercli# macro run /opt/aethercli/inventario.macro
 ```
 
 Para listar os arquivos `.macro` disponíveis no diretório da configuração:

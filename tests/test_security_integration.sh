@@ -241,3 +241,21 @@ printf '%s\n' '{"passwd-file":"","commands":[]}' > "$SPACE_DIR/config.json"
 output=$(HOME="$TMP_DIR/outro-home" AETHERCLI_BIN="$BIN" sh "$SCRIPTS_DIR/generate-initial-admin.sh" "$SPACE_DIR/config.json")
 [ "$(printf '%s\n' "$output" | sed -n '$p' | wc -c | tr -d ' ')" -eq 25 ]
 [ -n "$(find "$SPACE_DIR/users.json" -type f -perm 600)" ]
+
+# Árvore padrão em objeto-ação; só configure fica fora do padrão.
+DEFAULT_CONFIG="$SCRIPTS_DIR/../config.json"
+[ "$(jq -c '[.commands[].name]' "$DEFAULT_CONFIG")" = '["system","network","file","macro","settings","configure"]' ]
+output=$(HOME="$TMP_DIR/outro-home" "$BIN" -C "$DEFAULT_CONFIG" -p 'system time')
+printf '%s\n' "$output" | grep -q '[0-9]'
+output=$(HOME="$TMP_DIR/outro-home" "$BIN" -C "$DEFAULT_CONFIG" -p 'network route' 2>&1 || true)
+assert_absent "$output" 'Invalid input'
+set +e
+HOME="$TMP_DIR/outro-home" "$BIN" -C "$DEFAULT_CONFIG" -p 'show version' >/dev/null 2>&1
+status=$?
+set -e
+[ "$status" -eq 127 ]
+# Toda ativação de script da árvore aponta para um arquivo existente.
+jq -r '.. | .activation? // empty' "$DEFAULT_CONFIG" | grep 'AETHERCLI_SCRIPTS_DIR' | sed 's/.*AETHERCLI_SCRIPTS_DIR}\///' | while read -r script; do
+    [ -x "$SCRIPTS_DIR/$script" ]
+done
+
