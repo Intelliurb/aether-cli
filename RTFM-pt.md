@@ -53,6 +53,43 @@ Se o arquivo de configuração não existir, o aethercli imprimirá um aviso e i
 aethercli -p "show version"
 ```
 
+### Servidor MCP (Model Context Protocol)
+
+O modo `--mcp` expõe a árvore de comandos a agentes de IA por JSON-RPC em stdio, com uma mensagem por linha. Ele é opcional na compilação:
+
+```bash
+cmake -DAETHERCLI_ENABLE_MCP=ON ..
+aethercli -C /opt/ops/config.json --mcp
+```
+
+Para registrar no Claude Code:
+
+```bash
+claude mcp add ops -- aethercli -C /opt/ops/config.json --mcp
+```
+
+**Protocolo.** Atende às revisões `2026-07-28` (versão por requisição em `params._meta`, `server/discover`) e `2025-11-25` (`initialize`).
+
+**Ferramentas.** Todo comando com `activation` vira uma ferramenta, com o caminho unido por `_` (`database backup` vira `database_backup`):
+
+- `params` gera o esquema de entrada, e valores inválidos são recusados sem executar. Sem `params`, um comando com `"args": "append"` recebe o argumento de texto `args`.
+- `effect`, `idempotent` e `open_world` viram as anotações `readOnlyHint`, `destructiveHint`, `idempotentHint` e `openWorldHint`.
+- Ativações `internal:` não são expostas, e nomes de ferramenta repetidos impedem a partida.
+
+**Execução.** Cada comando recebe `/dev/null` como stdin, e stdout e stderr voltam juntos no resultado. Falha, sinal ou timeout respondem `isError: true`. Sem `max_output_bytes`, a saída de cada fluxo é limitada a 10 MiB. As chamadas são atendidas uma por vez: um comando longo bloqueia as seguintes.
+
+**Autenticação.** Com `require_authentication`, o servidor exige `AETHERCLI_USER` e `AETHERCLI_PASSWORD` válidos no ambiente e termina com status 1 caso contrário, inclusive sem `users.json`. A senha sai do ambiente na partida e não chega aos comandos.
+
+```bash
+claude mcp add ops -e AETHERCLI_USER=operador -e AETHERCLI_PASSWORD='...' -- aethercli -C /opt/ops/config.json --mcp
+```
+
+O cliente guarda essa senha na própria configuração: use uma conta dedicada, nunca a do `admin`.
+
+**Árvore de administração.** A subárvore `configure` da raiz e todo comando `admin_only`, com seus subcomandos, nunca são servidos, para nenhum usuário, inclusive `admin`. Um script administrativo fora de `configure` precisa de `admin_only`, porque o aethercli não tem como reconhecê-lo sozinho.
+
+**Atenção: o agente acessa todo o resto da árvore, com ou sem autenticação.** O login só decide se o servidor sobe; a lista de ferramentas não depende do usuário. Para limitar um agente, use um config próprio, só com os comandos necessários. Uma ativação que chame outro script administrativo ou o próprio `aethercli -p` também contorna o filtro, e isso é responsabilidade de quem escreve o config. Rode o servidor em uma conta sem privilégios: o agente tem os direitos dela.
+
 ### Instalação em Somente Leitura (Acesso Global)
 Para uso seguro e compartilhado por múltiplos usuários no sistema operacional, instale o binário em `/usr/local/bin` com permissões de somente leitura e execução para usuários comuns:
 ```bash
@@ -154,7 +191,7 @@ Por que usar Objeto-Ação?
 - `description`: (Opcional) Descrição longa ou documentação detalhada do comando.
 - `syntax`: (Opcional) Texto exibido como ajuda de sintaxe e uso detalhado (Triplo-TAB).
 - `activation`: O script OS, utilitário, ou keyword interna que será disparada.
-- `admin_only`: (Opcional) Se `true`, restringe a execução exclusivamente ao usuário autenticado `admin`.
+- `admin_only`: (Opcional) Se `true`, restringe a execução exclusivamente ao usuário autenticado `admin`. No MCP, o comando nunca é servido.
 - `args`: `"none"` (padrão) ou `"append"`. Com `"append"`, argumentos não previstos na configuração são concatenados (como tokens sanitizados) diretamente após a execução nativa da chave `activation`. Com `"none"`, sobressalentes são negados. Ver Seção 6.
 - `timeout_s`: (Opcional) Tempo máximo de execução em segundos. O grupo de processos é terminado se expirado.
 - `max_output_bytes`: (Opcional) Tamanho máximo da saída em bytes; saída excedente é truncada com aviso.

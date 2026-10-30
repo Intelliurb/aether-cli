@@ -2,7 +2,7 @@
 .\" mandoc -a aethercli.1
 .\" or:
 .\" man ./aethercli.1
-.TH AETHERCLI 1 "2026-10-30" "aethercli 0.7.0" "System Manager's Manual"
+.TH AETHERCLI 1 "2026-10-30" "aethercli 0.7.1" "System Manager's Manual"
 .SH NAME
 aethercli \- interactive CLI interface and command dispatcher for automation
 .SH SYNOPSIS
@@ -232,7 +232,7 @@ OS command line, external script, or reserved engine directive
 (\fBinternal:reload\fR, \fBinternal:run_macro\fR, \fBinternal:config_mode\fR).
 .TP
 .B "admin_only" \fR(boolean, optional)
-If \fBtrue\fR, restricts the command and everything below it to the authenticated "admin" user.
+If \fBtrue\fR, restricts the command and everything below it to the authenticated "admin" user. Never served in MCP mode.
 .TP
 .B "args" \fR(string, default "none")
 When set to \fB"append"\fR, extra arguments typed by the user are sanitized
@@ -439,8 +439,9 @@ command is the tool \fBdatabase_backup\fR with a generated input schema.
 It supports protocol revisions 2026-07-28 (per-request version in
 \fBparams._meta\fR, \fBserver/discover\fR) and 2025-11-25 (\fBinitialize\fR).
 Commands with an activation become tools named by joining the path with
-underscores; \fBinternal:\fR activations are not exposed, nor are \fBadmin_only\fR
-commands for other users. Each command gets \fI/dev/null\fR as standard input.
+underscores; \fBinternal:\fR activations are not exposed. The administration tree
+(the top-level \fBconfigure\fR subtree and every \fBadmin_only\fR command, with its
+subcommands) is never served, for any user, including \fBadmin\fR. Each command gets \fI/dev/null\fR as standard input.
 .PP
 With \fBrequire_authentication\fR, the server needs valid \fBAETHERCLI_USER\fR and
 \fBAETHERCLI_PASSWORD\fR variables and otherwise exits with status 1. The bootstrap

@@ -112,6 +112,11 @@ Com `"require_authentication": true`, o servidor exige `AETHERCLI_USER` e
 porque o stdin pertence ao protocolo. O bootstrap do login interativo (entrar
 como `admin` sem `users.json`) não vale aqui.
 
+O MCP nunca serve a árvore de administração: a subárvore `configure` e os comandos
+`admin_only`. Com ou sem autenticação, o agente acessa todo o resto, então use um
+config próprio para ele, como o deste exemplo. A referência completa do MCP está em
+`RTFM-pt.md` e `RTFM-en.md`.
+
 # Usuários e autenticação
 
 Ative o login com `"require_authentication": true` no `config.json`. As contas

@@ -2,7 +2,7 @@
 .\" mandoc -a aethercli.1
 .\" or:
 .\" man ./aethercli.1
-.TH AETHERCLI 1 "2026-10-30" "aethercli 0.7.0" "Manual do Administrador do Sistema"
+.TH AETHERCLI 1 "2026-10-30" "aethercli 0.7.1" "Manual do Administrador do Sistema"
 .SH NOME
 aethercli \- interface CLI para automação de sistemas e despacho de comandos
 .SH SINOPSE
@@ -241,7 +241,7 @@ um binário do sistema, um script ou uma chamada interna reservada
 (\fBinternal:reload\fR, \fBinternal:run_macro\fR, \fBinternal:config_mode\fR).
 .TP
 .B "admin_only" \fR(booleano, opcional)
-Se \fBtrue\fR, restringe o comando e tudo abaixo dele ao usuário autenticado "admin".
+Se \fBtrue\fR, restringe o comando e tudo abaixo dele ao usuário autenticado "admin". Nunca é servido no modo MCP.
 .TP
 .B "args" \fR(string, padrão "none")
 Quando definido como \fB"append"\fR, tokens sobressalentes digitados após o
@@ -450,7 +450,9 @@ comando é a ferramenta \fBdatabase_backup\fR, com esquema de entrada gerado.
 Atende às revisões 2026-07-28 (versão por requisição em \fBparams._meta\fR,
 \fBserver/discover\fR) e 2025-11-25 (\fBinitialize\fR). Comandos com ativação viram
 ferramentas nomeadas pelo caminho unido com sublinhados; ativações \fBinternal:\fR
-não são expostas, nem comandos \fBadmin_only\fR para outros usuários. Cada comando
+não são expostas. A árvore de administração (a subárvore \fBconfigure\fR da raiz e
+todo comando \fBadmin_only\fR, com seus subcomandos) nunca é servida, para nenhum
+usuário, inclusive \fBadmin\fR. Cada comando
 recebe \fI/dev/null\fR como entrada padrão.
 .PP
 Com \fBrequire_authentication\fR, o servidor exige \fBAETHERCLI_USER\fR e
