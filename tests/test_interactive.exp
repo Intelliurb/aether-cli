@@ -313,10 +313,24 @@ want "macro recarrega" {Reloading}
 # TCSAFLUSH descartaria o que fosse digitado.
 want "prompt apos macro com reload" {aethercli# }
 send "marker\r"
-want "saida apos reload volta ao terminal" {AFTER_RELOAD_MARK}
+want "comando roda apos macro com reload" {AFTER_RELOAD_MARK}
 settle
 send "\004"
 expect eof
+# O tee tambem escreve no terminal: o vazamento so aparece no log da macro.
+set macro_logs [glob -nocomplain "$SANDBOX/rl.macro.*.out"]
+if {[llength $macro_logs] != 1} {
+    fail "log da macro existe" "encontrados: $macro_logs"
+} else {
+    set f [open [lindex $macro_logs 0] r]
+    set macro_log [read $f]
+    close $f
+    if {[string first "AFTER_RELOAD_MARK" $macro_log] >= 0} {
+        fail "sessao nao grava no log da macro" "saida posterior ao reload no log"
+    } else {
+        ok "sessao nao grava no log da macro"
+    }
+}
 
 # --- Resultado -------------------------------------------------------------
 file delete -force $SANDBOX
