@@ -291,7 +291,7 @@ printf '%s\n' "$res" | jq -e '.result.resultType == "complete"' >/dev/null
 printf '%s\n' "$res" | jq -e '.result.ttlMs == 300000' >/dev/null
 printf '%s\n' "$res" | jq -e '.result.cacheScope == "public"' >/dev/null
 printf '%s\n' "$res" | jq -e '.result._meta["io.modelcontextprotocol/serverInfo"].name == "aethercli-mcp"' >/dev/null
-printf '%s\n' "$res" | jq -e '.result._meta["io.modelcontextprotocol/serverInfo"].version == "0.7.0"' >/dev/null
+printf '%s\n' "$res" | jq -e '.result._meta["io.modelcontextprotocol/serverInfo"].version == "0.7.1"' >/dev/null
 echo "  [OK] server/discover responde conforme 2026-07-28"
 
 # 2.2 Versão não suportada em _meta retorna UnsupportedProtocolVersionError (-32022)
@@ -308,7 +308,7 @@ req='{"jsonrpc": "2.0", "id": 3, "method": "initialize", "params": {"protocolVer
 res=$(run_mcp_session "$req")
 printf '%s\n' "$res" | jq -e '.result.protocolVersion == "2025-11-25"' >/dev/null
 printf '%s\n' "$res" | jq -e '.result.serverInfo.name == "aethercli-mcp"' >/dev/null
-printf '%s\n' "$res" | jq -e '.result.serverInfo.version == "0.7.0"' >/dev/null
+printf '%s\n' "$res" | jq -e '.result.serverInfo.version == "0.7.1"' >/dev/null
 echo "  [OK] initialize negocia versão legada 2025-11-25"
 
 # 2.4 tools/list ordem determinística e inputSchema correto
@@ -430,12 +430,12 @@ if printf '%s\n' "$res_guest" | jq -e '.result.tools | any(.name == "admin_cmd")
 fi
 res_guest_call=$(printf '{"jsonrpc": "2.0", "id": 42, "method": "tools/call", "params": {"name": "admin_cmd"}}\n' | AETHERCLI_USER=operador "$BIN" -C "$CONFIG_FILE" --mcp)
 printf '%s\n' "$res_guest_call" | jq -e '.error.code == -32602' >/dev/null
-# Para usuario admin, admin_cmd deve existir e executar
+# A árvore de administração nunca é servida, nem para o usuário admin.
 res_admin=$(printf '{"jsonrpc": "2.0", "id": 43, "method": "tools/list"}\n' | AETHERCLI_USER=admin "$BIN" -C "$CONFIG_FILE" --mcp)
-printf '%s\n' "$res_admin" | jq -e '.result.tools | any(.name == "admin_cmd")' >/dev/null
+printf '%s\n' "$res_admin" | jq -e '[.result.tools[].name] | index("admin_cmd") == null' >/dev/null
 res_admin_call=$(printf '{"jsonrpc": "2.0", "id": 44, "method": "tools/call", "params": {"name": "admin_cmd"}}\n' | AETHERCLI_USER=admin "$BIN" -C "$CONFIG_FILE" --mcp)
-printf '%s\n' "$res_admin_call" | jq -e '.result.isError == false' >/dev/null
-printf '%s\n' "$res_admin_call" | jq -e '.result.content[0].text | contains("ADMIN_OK")' >/dev/null
+printf '%s\n' "$res_admin_call" | jq -e '.error.code == -32602' >/dev/null
+printf '%s\n' "$res_admin_call" | jq -e '.result == null' >/dev/null
 echo "  [OK] MCP-4 controle de acesso admin_only em tools/list e tools/call validado"
 
 # 2.15 MCP-3: tools/call com parâmetros tipados válidos
@@ -650,6 +650,35 @@ printf '%s\n' "$output" | grep -q SLP_DONE
 res=$( { printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"slp"}}'; sleep 1; pkill -HUP -f "$NOHUP_CONFIG" || true; sleep 2; } | sh -c "trap '' HUP; exec \"$BIN\" -C \"$NOHUP_CONFIG\" --mcp")
 printf '%s\n' "$res" | jq -e '.result.isError == false and (.result.content[0].text | contains("SLP_DONE"))' >/dev/null
 echo "  [OK] SIGHUP ignorado na herança (nohup) respeitado"
+
+# 3.10j subárvore configure e descendentes de admin_only ficam fora, sem depender do usuário
+ADMIN_TREE_CONFIG="$TMP_DIR/admin_tree.json"
+cat << 'CFG' > "$ADMIN_TREE_CONFIG"
+{ "commands": [
+    { "name": "configure", "subcommands": [
+        { "name": "terminal", "activation": "internal:config_mode", "subcommands": [
+            { "name": "whoami", "activation": "echo CONFIGURE_RAN" }
+        ] }
+    ] },
+    { "name": "ops", "admin_only": true, "subcommands": [
+        { "name": "child", "activation": "echo CHILD_RAN" }
+    ] },
+    { "name": "app", "subcommands": [
+        { "name": "configure", "activation": "echo APP_CONFIGURE_OK" }
+    ] }
+] }
+CFG
+res=$(printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n' | AETHERCLI_USER=admin "$BIN" -C "$ADMIN_TREE_CONFIG" --mcp)
+printf '%s\n' "$res" | jq -e '[.result.tools[].name] == ["app_configure"]' >/dev/null
+for tool in configure_terminal_whoami ops_child; do
+    res=$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"%s"}}\n' "$tool" | AETHERCLI_USER=admin "$BIN" -C "$ADMIN_TREE_CONFIG" --mcp)
+    printf '%s\n' "$res" | jq -e '.error.code == -32602' >/dev/null
+done
+# A árvore padrão não expõe nenhuma ferramenta de configure.
+DEFAULT_CONFIG="$SCRIPT_DIR/etc/config.json"
+res=$(printf '{"jsonrpc":"2.0","id":3,"method":"tools/list"}\n' | "$BIN" -C "$DEFAULT_CONFIG" --mcp)
+printf '%s\n' "$res" | jq -e '([.result.tools[].name | select(startswith("configure"))] | length) == 0 and (.result.tools | length) > 0' >/dev/null
+echo "  [OK] árvore de administração fora do MCP"
 
 # 3.11 string com NUL é recusada
 res=$(reg_session "$(reg_call flagged '{"v":"a\u0000b"}')")

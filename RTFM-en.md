@@ -53,6 +53,43 @@ If the configuration file does not exist, aethercli prints a warning and starts 
 aethercli -p "show version"
 ```
 
+### MCP Server (Model Context Protocol)
+
+The `--mcp` mode exposes the command tree to AI agents over JSON-RPC on stdio, one message per line. It is optional at build time:
+
+```bash
+cmake -DAETHERCLI_ENABLE_MCP=ON ..
+aethercli -C /opt/ops/config.json --mcp
+```
+
+To register it in Claude Code:
+
+```bash
+claude mcp add ops -- aethercli -C /opt/ops/config.json --mcp
+```
+
+**Protocol.** Supports revisions `2026-07-28` (per-request version in `params._meta`, `server/discover`) and `2025-11-25` (`initialize`).
+
+**Tools.** Every command with an `activation` becomes a tool, named by joining its path with `_` (`database backup` becomes `database_backup`):
+
+- `params` generates the input schema, and invalid values are refused without running anything. Without `params`, a command with `"args": "append"` takes a text argument named `args`.
+- `effect`, `idempotent` and `open_world` become the `readOnlyHint`, `destructiveHint`, `idempotentHint` and `openWorldHint` annotations.
+- `internal:` activations are not exposed, and duplicate tool names prevent startup.
+
+**Execution.** Each command gets `/dev/null` as stdin, and stdout and stderr return together in the result. Failure, signal or timeout respond with `isError: true`. Without `max_output_bytes`, each stream is limited to 10 MiB. Calls are served one at a time: a long command blocks the next ones.
+
+**Authentication.** With `require_authentication`, the server requires valid `AETHERCLI_USER` and `AETHERCLI_PASSWORD` in the environment and otherwise exits with status 1, including when there is no `users.json`. The password leaves the environment at startup and never reaches commands.
+
+```bash
+claude mcp add ops -e AETHERCLI_USER=operator -e AETHERCLI_PASSWORD='...' -- aethercli -C /opt/ops/config.json --mcp
+```
+
+The client stores this password in its own configuration: use a dedicated account, never `admin`.
+
+**Administration tree.** The top-level `configure` subtree and every `admin_only` command, with its subcommands, are never served, for any user, including `admin`. An administrative script outside `configure` needs `admin_only`, because aethercli cannot recognize it on its own.
+
+**Warning: the agent reaches the rest of the tree, with or without authentication.** Login only decides whether the server starts; the tool list does not depend on the user. To limit an agent, use a dedicated config with only the commands it needs. An activation that calls another administrative script or `aethercli -p` itself also bypasses the filter, and that is the responsibility of whoever writes the config. Run the server under an unprivileged account: the agent has its rights.
+
 ### Read-Only Global Installation
 For secure shared usage across all system users, install the binary into `/usr/local/bin` with read-and-execute permissions for regular users:
 ```bash
@@ -154,7 +191,7 @@ Why use Object-Action?
 - `description`: (Optional) Extended description or documentation.
 - `syntax`: (Optional) Help text displayed for command details (Triple-TAB).
 - `activation`: Operating system command or internal keyword to be executed.
-- `admin_only`: (Optional) If `true`, restricts execution strictly to the authenticated `admin` user.
+- `admin_only`: (Optional) If `true`, restricts execution strictly to the authenticated `admin` user. In MCP, the command is never served.
 - `args`: `"none"` (default) or `"append"`. With `"append"`, extra user tokens are appended to the `activation` command, each one shell-escaped. With `"none"`, extra tokens are rejected. See section 6.
 - `timeout_s`: (Optional) Maximum execution time in seconds. Subprocess group is terminated if exceeded.
 - `max_output_bytes`: (Optional) Maximum output size in bytes; output beyond this is truncated.

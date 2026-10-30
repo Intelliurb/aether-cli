@@ -85,7 +85,9 @@ static void collectTools(
     std::vector<McpToolMapping>& outTools
 ) {
     for (const auto& cmd : commands) {
-        if (cmd.admin_only && g_current_user != "admin") {
+        // A árvore de administração nunca é servida, para nenhum usuário: um agente
+        // não pode alterar a própria árvore de comandos nem desligar o login.
+        if (cmd.admin_only || (prefixPath.empty() && cmd.name == "configure")) {
             continue;
         }
 
