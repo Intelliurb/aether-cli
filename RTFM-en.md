@@ -144,10 +144,10 @@ AetherCLI reserves specific `activation` strings for internal engine features:
 - `internal:list_macros`: Lists available macro files in the configuration directory.
 
 ### 4.2 Macro System
-Macros are simple text files with the `.macro` extension. Each line is executed as a standard CLI command.
+Macros are simple text files with the `.macro` extension. Each line is executed as a standard CLI command. A macro always resolves from the root of the tree, so write the full path, even after `configure terminal`. A `reload` ends the macro, so it must be the last line.
 
 1. The engine looks for plain text files, usually with the `.macro` extension, stored in your configuration directory (e.g., `~/.aethercli/`).
-2. You can run the command `list macros` (or `configure terminal` -> `list macros`) to see what is available.
+2. Run `configure terminal` and then `list macros` to see what is available there.
 3. When you run `macro run my_script.macro`, the engine opens the file and "types" the commands line-by-line into the shell, just as if a user were operating the keyboard. It feeds these lines directly into the native execution loop (`executeCommand`).
 4. There is a strict safeguard against recursion (a `MAX_MACRO_DEPTH` limiter) in the source code to prevent a macro from calling itself indefinitely and locking the system in an infinite loop.
 
@@ -155,12 +155,9 @@ Macros are simple text files with the `.macro` extension. Each line is executed 
 In enterprise and infrastructure environments, batch configuration is highly common. Instead of typing dozens of commands manually in the prompt, you can create a file named `initial_setup.macro` containing the following:
 
 ```text
-configure terminal
-add user john
-add user jane
-set language portuguese-brasil
-set statusbar on
-exit
+configure terminal set language portuguese-brasil
+configure terminal set statusbar on
+configure terminal reload
 ```
 
 And then apply all steps automatically by running:

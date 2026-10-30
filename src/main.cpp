@@ -292,7 +292,22 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
         dup2(pipefd[1], STDOUT_FILENO);
         dup2(pipefd[1], STDERR_FILENO);
 
+        // Restaura a saída também quando a macro termina em reload: senão o resto da
+        // sessão continuaria indo para o log da macro.
+        auto restoreOutput = [&]() {
+            std::cout << std::flush;
+            std::cerr << std::flush;
+            dup2(saved_stdout, STDOUT_FILENO);
+            dup2(saved_stderr, STDERR_FILENO);
+            close(saved_stdout);
+            close(saved_stderr);
+            close(pipefd[1]);
+            int tee_status;
+            waitpid(tee_pid, &tee_status, 0);
+        };
+
         int m_status = 0;
+        try {
         for (const auto& mCmd : *macroCommands) {
             std::cout << prompt << mCmd << "\n";
             std::cout << std::flush;
@@ -306,19 +321,15 @@ bool executeCommand(const std::string& full_input, const std::vector<Command>& t
                 break;
             }
         }
+        } catch (...) {
+            restoreOutput();
+            throw;
+        }
         if (m_status == 0) {
             Logger::info("Macro '" + macroFile + "' completed successfully");
         }
 
-        std::cout << std::flush;
-        std::cerr << std::flush;
-        dup2(saved_stdout, STDOUT_FILENO);
-        dup2(saved_stderr, STDERR_FILENO);
-        close(saved_stdout);
-        close(saved_stderr);
-        close(pipefd[1]);
-        int status;
-        waitpid(tee_pid, &status, 0);
+        restoreOutput();
 
         std::cout << withValue(lang.getOr("macro_msg_finished", "% Macro execution finished. Log saved to: _VALUE_"), outFile) << std::endl;
         if (out_status) *out_status = m_status;

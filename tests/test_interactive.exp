@@ -291,6 +291,31 @@ want "prompt apos reload" {aethercli# }
 send "\004"
 expect eof
 
+# Reload dentro de macro nao pode deixar a sessao gravando no log da macro.
+set f [open "$SANDBOX/rl.macro" w]
+puts $f "configure terminal reload"
+close $f
+set RCONF "$SANDBOX/reload.json"
+set f [open $RCONF w]
+puts $f {{ "commands": [
+  { "name": "macro", "subcommands": [ { "name": "run", "activation": "internal:run_macro", "args": "append" } ] },
+  { "name": "marker", "activation": "echo AFTER_RELOAD_MARK" },
+  { "name": "configure", "subcommands": [ { "name": "terminal", "activation": "internal:config_mode", "subcommands": [
+    { "name": "reload", "activation": "internal:reload" } ] } ] }
+] }}
+close $f
+spawn $BIN -C $RCONF
+want "prompt antes da macro" {aethercli# }
+settle
+send "macro run rl.macro\r"
+want "macro recarrega" {Reloading}
+settle
+send "marker\r"
+want "saida apos reload volta ao terminal" {AFTER_RELOAD_MARK}
+settle
+send "\004"
+expect eof
+
 # --- Resultado -------------------------------------------------------------
 file delete -force $SANDBOX
 puts ""

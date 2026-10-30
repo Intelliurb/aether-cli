@@ -258,4 +258,3 @@ set -e
 jq -r '.. | .activation? // empty' "$DEFAULT_CONFIG" | grep 'AETHERCLI_SCRIPTS_DIR' | sed 's/.*AETHERCLI_SCRIPTS_DIR}\///' | while read -r script; do
     [ -x "$SCRIPTS_DIR/$script" ]
 done
-
