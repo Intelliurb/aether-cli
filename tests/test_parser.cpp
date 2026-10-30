@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2026 caq@intelliurb.com
- * PROPRIEDADE DA INTELLIURB - SOMENTE USO INTERNO
  */
 #include <catch2/catch_test_macros.hpp>
 
