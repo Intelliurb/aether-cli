@@ -31,6 +31,7 @@ enum class AuthError {
     TooManyAttempts,
     UsersFileMissing,
     UsersFileInvalid,
+    UsersFileUnreadable,
     EmptyPassword,
     PasswordMismatch,
 };
@@ -47,6 +48,7 @@ inline constexpr AuthErrorEntry AUTH_ERROR_TABLE[] = {
     {AuthError::TooManyAttempts,  "AUTH_LOCKED",   "too many failed login attempts"},
     {AuthError::UsersFileMissing, "USERS_MISSING", "users file not found"},
     {AuthError::UsersFileInvalid, "USERS_INVALID", "users file is malformed"},
+    {AuthError::UsersFileUnreadable, "USERS_UNREADABLE", "users file cannot be read"},
     {AuthError::EmptyPassword,    "PW_EMPTY",      "password cannot be empty"},
     {AuthError::PasswordMismatch, "PW_MISMATCH",   "passwords do not match"},
 };
@@ -374,7 +376,10 @@ public:
         err = AuthError::None;
         std::ifstream file(path);
         if (!file.is_open()) {
-            err = AuthError::UsersFileMissing;
+            // Só a ausência real conta como "sem contas": sem permissão de leitura,
+            // as contas existem e a credencial padrão não pode valer.
+            struct stat st {};
+            err = (stat(path.c_str(), &st) != 0 && errno == ENOENT) ? AuthError::UsersFileMissing : AuthError::UsersFileUnreadable;
             return {};
         }
 
@@ -437,7 +442,7 @@ public:
     }
 
     static bool upsertUserFile(const std::string& usersFile, const UserRecord& rec,
-                               bool& replaced, bool& recoveredMalformed, bool markPepperFile = false) {
+                               bool& replaced, bool& recoveredMalformed, bool markPepperFile = false, bool mustNotExist = false) {
         replaced = false;
         recoveredMalformed = false;
         nlohmann::json j = {{"users", nlohmann::json::array()}};
@@ -446,6 +451,7 @@ public:
         const bool exists = lstat(usersFile.c_str(), &st) == 0;
         if (exists && (!S_ISREG(st.st_mode) || S_ISLNK(st.st_mode))) return false;
         if (!exists && errno != ENOENT) return false;
+        if (exists && mustNotExist) return false;
 
         if (exists) {
             std::ifstream in(usersFile);
@@ -506,6 +512,12 @@ public:
         }
         if (ok) ok = fsync(fd) == 0;
         if (close(fd) != 0) ok = false;
+        if (ok && mustNotExist) {
+            // link() falha se outro processo criou o arquivo depois da checagem acima.
+            ok = link(tempName.data(), usersFile.c_str()) == 0;
+            unlink(tempName.data());
+            return ok;
+        }
         if (ok) ok = rename(tempName.data(), usersFile.c_str()) == 0;
         if (!ok) unlink(tempName.data());
         return ok;
@@ -583,7 +595,7 @@ public:
     }
 
     // Provisionamento via CLI (--adduser): cria/atualiza usuário no users.json.
-    static bool addUser(const std::string& usersFile, const std::string& username, const cli::i18n::LocalizationManager& lang) {
+    static bool addUser(const std::string& usersFile, const std::string& username, const cli::i18n::LocalizationManager& lang, bool mustNotExist = false) {
         if (username.length() < 1 || username.length() > 32) {
             std::cerr << lang.getOr("auth_err_username_len", "%% Error: Username must be between 1 and 32 characters long.") << std::endl;
             return false;
@@ -648,8 +660,11 @@ public:
         bool replaced = false;
         bool recoveredMalformed = false;
         const bool markPepperFile = !pepper.empty() && !std::getenv("AETHERCLI_PEPPER");
-        if (!upsertUserFile(usersFile, rec, replaced, recoveredMalformed, markPepperFile)) {
-            std::cerr << "%% Error: cannot write " << usersFile << " (" << std::strerror(errno) << ")" << std::endl;
+        if (!upsertUserFile(usersFile, rec, replaced, recoveredMalformed, markPepperFile, mustNotExist)) {
+            std::string msg = lang.getOr("auth_err_users_write", "%% Error: cannot write users file: _VALUE_");
+            const size_t marker = msg.find("_VALUE_");
+            if (marker != std::string::npos) msg.replace(marker, 7, usersFile);
+            std::cerr << msg << std::endl;
             return false;
         }
         if (recoveredMalformed) {
