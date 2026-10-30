@@ -156,6 +156,12 @@ Why use Object-Action?
 - `activation`: Operating system command or internal keyword to be executed.
 - `admin_only`: (Optional) If `true`, restricts execution strictly to the authenticated `admin` user.
 - `args`: `"none"` (default) or `"append"`. With `"append"`, extra user tokens are appended to the `activation` command, each one shell-escaped. With `"none"`, extra tokens are rejected. See section 6.
+- `timeout_s`: (Optional) Maximum execution time in seconds. Subprocess group is terminated if exceeded.
+- `max_output_bytes`: (Optional) Maximum output size in bytes; output beyond this is truncated.
+- `cwd`: (Optional) Working directory for command execution.
+- `env`: (Optional) JSON object defining environment variables passed to the command.
+- `params`: (Optional) Typed positional parameters (`name`, `type`, `required`, `enum`, `pattern`, `minimum`, `maximum`, `description`); mutually exclusive with `"args": "append"`. See the use case in `RTFM.md`.
+- `effect`, `idempotent`, `open_world`: (Optional) Published as MCP tool annotations.
 - `subcommands`: (Optional) A list of other nested commands.
 
 ### Configuration Example
@@ -240,6 +246,10 @@ To add or update a user securely, use the CLI built-in tools (see Section 9) or 
 aethercli --adduser admin
 ```
 The optional `AETHERCLI_PEPPER` environment variable adds a secret pepper to the hashes; it must be set to the same value when running aethercli with authentication enabled.
+
+Without that variable, a new `users.json` in `~/.aethercli` gets its own random pepper in `~/.aethercli/pepper`, mode `0400`, created by `--adduser`. It is never overwritten, and deleting it invalidates the passwords in that file. A `users.json` that already existed, or one outside `~/.aethercli`, does not use this pepper. An open mode or another owner denies login.
+
+The file format is documented in `etc/users.json.template`, which holds no credentials and denies login if copied as is. `scripts/generate-initial-admin.sh` creates the `admin` user with a random password shown once. Keep `users.json` at mode `0600`, never commit it, and back it up together with `pepper`. Step-by-step guidance is in `RTFM.md`.
 
 ---
 

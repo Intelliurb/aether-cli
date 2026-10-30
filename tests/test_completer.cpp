@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2026 caq@intelliurb.com
- * PROPRIEDADE DA INTELLIURB - SOMENTE USO INTERNO
  */
 #include <catch2/catch_test_macros.hpp>
 
@@ -111,4 +110,33 @@ TEST_CASE("longestCommonPrefix: completa até onde os matches concordam") {
     REQUIRE(longestCommonPrefix(one) == "shutdown");
 
     REQUIRE(longestCommonPrefix({}).empty());
+}
+
+TEST_CASE("prefixMatchStrings e longestCommonPrefixStrings (PAR-3)") {
+    std::vector<std::string> candidates = {"staging", "production", "preview"};
+    auto m1 = prefixMatchStrings(candidates, "pr");
+    REQUIRE(m1.size() == 2);
+    REQUIRE(longestCommonPrefixStrings(m1) == "pr");
+
+    auto m2 = prefixMatchStrings(candidates, "st");
+    REQUIRE(m2.size() == 1);
+    REQUIRE(longestCommonPrefixStrings(m2) == "staging");
+
+    REQUIRE(prefixMatchStrings(candidates, "xyz").empty());
+    REQUIRE(longestCommonPrefixStrings({}).empty());
+}
+
+TEST_CASE("resolve: admin_only do pai vale para o caminho inteiro") {
+    Command child;
+    child.name = "child";
+    Command parent;
+    parent.name = "parent";
+    parent.admin_only = true;
+    parent.subcommands = {child};
+    std::vector<Command> tree{parent};
+
+    auto r = resolve(tree, {"parent", "child"});
+    REQUIRE(r.cmd != nullptr);
+    REQUIRE_FALSE(r.cmd->admin_only);
+    REQUIRE(r.requires_admin);
 }

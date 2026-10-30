@@ -22,7 +22,7 @@ fi
 
 USER=$1
 TMP=$(mktemp)
-jq ".users = [.users[] | select(.username != \"$USER\")]" "$USERS_FILE" > "$TMP" && mv "$TMP" "$USERS_FILE"
+jq --arg user "$USER" '.users = [.users[] | select(.username != $user)]' "$USERS_FILE" > "$TMP" && mv "$TMP" "$USERS_FILE"
 
 msg=$(get_msg "script_rm_success" "User '_USER_' removed (if existed).")
 echo "${msg/_USER_/$USER}"

@@ -156,6 +156,12 @@ Por que usar Objeto-Ação?
 - `activation`: O script OS, utilitário, ou keyword interna que será disparada.
 - `admin_only`: (Opcional) Se `true`, restringe a execução exclusivamente ao usuário autenticado `admin`.
 - `args`: `"none"` (padrão) ou `"append"`. Com `"append"`, argumentos não previstos na configuração são concatenados (como tokens sanitizados) diretamente após a execução nativa da chave `activation`. Com `"none"`, sobressalentes são negados. Ver Seção 6.
+- `timeout_s`: (Opcional) Tempo máximo de execução em segundos. O grupo de processos é terminado se expirado.
+- `max_output_bytes`: (Opcional) Tamanho máximo da saída em bytes; saída excedente é truncada com aviso.
+- `cwd`: (Opcional) Diretório de trabalho para execução do comando.
+- `env`: (Opcional) Objeto JSON definindo variáveis de ambiente passadas ao comando.
+- `params`: (Opcional) Parâmetros posicionais tipados (`name`, `type`, `required`, `enum`, `pattern`, `minimum`, `maximum`, `description`); excludente com `"args": "append"`. Veja o caso de uso em `RTFM.md`.
+- `effect`, `idempotent`, `open_world`: (Opcionais) Publicados nas anotações das ferramentas MCP.
 - `subcommands`: (Opcional) Uma array que suporta recursivamente os mesmos nós hierárquicos acima.
 
 ### Exemplo de Configuração
@@ -240,6 +246,10 @@ Para criação ou atualização limpa dos credenciados, chame as opções nativa
 aethercli --adduser admin
 ```
 A variável superposta ambiente (env var) `AETHERCLI_PEPPER` acopla um tempero fixo que é digerido sobre a chave durante a maturação do bloco `PBKDF2`. Ela deve ser fixada identicamente tanto durante execuções headless (--adduser) como durante a carga viva de login das shell's configuradas.
+
+Sem essa variável, um `users.json` novo em `~/.aethercli` ganha um pepper aleatório próprio em `~/.aethercli/pepper`, modo `0400`, criado pelo `--adduser`. Ele nunca é sobrescrito, e apagá-lo invalida as senhas desse arquivo. Um `users.json` que já existia, ou um arquivo fora de `~/.aethercli`, não usa esse pepper. Permissão aberta ou outro dono impedem o login.
+
+O formato está em `etc/users.json.template`, que não contém credenciais e nega o login se copiado como está. `scripts/generate-initial-admin.sh` cria o `admin` com uma senha aleatória exibida uma única vez. Mantenha o `users.json` em modo `0600`, nunca o versione e faça backup dele junto com o `pepper`. O passo a passo está em `RTFM.md`.
 
 ---
 

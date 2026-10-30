@@ -2,7 +2,7 @@
 .\" mandoc -a aethercli.1
 .\" or:
 .\" man ./aethercli.1
-.TH AETHERCLI 1 "2026-10-17" "aethercli 0.6.0" "Manual do Administrador do Sistema"
+.TH AETHERCLI 1 "2026-10-30" "aethercli 0.7.0" "Manual do Administrador do Sistema"
 .SH NOME
 aethercli \- interface CLI para automação de sistemas e despacho de comandos
 .SH SINOPSE
@@ -241,12 +241,40 @@ um binário do sistema, um script ou uma chamada interna reservada
 (\fBinternal:reload\fR, \fBinternal:run_macro\fR, \fBinternal:config_mode\fR).
 .TP
 .B "admin_only" \fR(booleano, opcional)
-Se \fBtrue\fR, restringe a execução exclusivamente ao usuário autenticado "admin".
+Se \fBtrue\fR, restringe o comando e tudo abaixo dele ao usuário autenticado "admin".
 .TP
 .B "args" \fR(string, padrão "none")
 Quando definido como \fB"append"\fR, tokens sobressalentes digitados após o
 comando são higienizados e anexados à execução. Se \fB"none"\fR, argumentos
 não previstos na árvore são bloqueados com erro de sintaxe.
+.TP
+.B "timeout_s" \fR(inteiro, opcional)
+Tempo máximo em segundos. O grupo de processos recebe SIGTERM e depois SIGKILL.
+Status de saída 124 no modo headless.
+.TP
+.B "max_output_bytes" \fR(inteiro, opcional)
+Limite de saída por fluxo; o excedente é descartado com aviso. No modo MCP,
+comandos sem esse campo ficam limitados a 10 MiB.
+.TP
+.B "cwd" \fR(string, opcional)
+Diretório de trabalho. Se relativo, é resolvido a partir do diretório do \fBconfig.json\fR.
+.TP
+.B "env" \fR(objeto, opcional)
+Variáveis de ambiente do comando.
+.TP
+.B "params" \fR(array de objetos, opcional)
+Parâmetros posicionais tipados; excludente com \fB"args": "append"\fR.
+Campos: \fBname\fR (letras, dígitos e sublinhado, sem começar com dígito),
+\fBtype\fR (\fBstring\fR, \fBinteger\fR, \fBboolean\fR), \fBrequired\fR,
+\fBenum\fR, \fBpattern\fR (ECMAScript; o valor inteiro precisa casar),
+\fBminimum\fR, \fBmaximum\fR, \fBdescription\fR.
+Os valores chegam como argumentos e como variáveis \fBAETHERCLI_PARAM_\fINOME\fR.
+.TP
+.B "effect" \fR(string, padrão "write")
+\fBread\fR, \fBwrite\fR ou \fBdestructive\fR; publicado nas anotações da ferramenta MCP.
+.TP
+.B "idempotent" \fR(booleano, padrão false), \fB"open_world"\fR (booleano, padrão true)
+Publicados nas anotações MCP \fBidempotentHint\fR e \fBopenWorldHint\fR.
 .TP
 .B "subcommands" \fR(array de objetos, opcional)
 Lista aninhada contendo as ações ou sub-recursos do objeto.
@@ -384,6 +412,51 @@ Exibe resumo de opções e encerra.
 \fB\-v\fR, \fB\-\-version\fR
 Exibe a versão do programa e encerra.
 
+.TP
+\fB\-\-mcp\fR
+Servidor Model Context Protocol via stdio. Só em binários compilados com
+\fB\-DAETHERCLI_ENABLE_MCP=ON\fR. Veja \fBSERVIDOR MCP\fR.
+
+.SH CASO DE USO: BACKUP VALIDADO
+Operadores e agentes de IA podem gerar backups, mas só de um banco conhecido e
+com retenção de 1 a 90 dias. No \fIconfig.json\fR:
+.PP
+.nf
+{
+  "name": "database",
+  "subcommands": [
+    {
+      "name": "backup",
+      "activation": "${AETHERCLI_SCRIPTS_DIR}/backup.sh",
+      "timeout_s": 600,
+      "params": [
+        { "name": "banco", "type": "string", "required": true,
+          "enum": ["vendas", "estoque"] },
+        { "name": "retencao", "type": "integer", "required": true,
+          "minimum": 1, "maximum": 90 }
+      ]
+    }
+  ]
+}
+.fi
+.PP
+\fBaethercli \-p "database backup vendas 7"\fR executa \fIbackup.sh vendas 7\fR e
+termina com o status dele. \fBaethercli \-p "database backup vendas 365"\fR é
+recusado sem executar nada e termina com status 1. Por \fB\-\-mcp\fR, o mesmo
+comando é a ferramenta \fBdatabase_backup\fR, com esquema de entrada gerado.
+
+.SH SERVIDOR MCP
+\fBaethercli \-\-mcp\fR lê uma mensagem JSON-RPC por linha da entrada padrão.
+Atende às revisões 2026-07-28 (versão por requisição em \fBparams._meta\fR,
+\fBserver/discover\fR) e 2025-11-25 (\fBinitialize\fR). Comandos com ativação viram
+ferramentas nomeadas pelo caminho unido com sublinhados; ativações \fBinternal:\fR
+não são expostas, nem comandos \fBadmin_only\fR para outros usuários. Cada comando
+recebe \fI/dev/null\fR como entrada padrão.
+.PP
+Com \fBrequire_authentication\fR, o servidor exige \fBAETHERCLI_USER\fR e
+\fBAETHERCLI_PASSWORD\fR válidos e, caso contrário, termina com status 1. O bootstrap
+do login interativo (entrar como \fBadmin\fR sem arquivo de usuários) não vale aqui.
+
 .SH NAVEGAÇÃO E RECURSOS INTERATIVOS
 .IP \(bu 3
 \fBAutocompletar (TAB 1x):\fR Completa o token até o prefixo comum mais longo.
@@ -421,8 +494,11 @@ Erro fatal de inicialização, falha de autenticação ou interrupção de execu
 .B 2
 Erro de validação ou argumentos incorretos nas opções da linha de comando.
 .TP
+.B 124
+Comando excedeu \fBtimeout_s\fR.
+.TP
 .B 127
-Comando executado não encontrado no sistema operacional.
+Comando não encontrado no sistema operacional, ou comando desconhecido.
 .TP
 .B 128+N
 Comando terminado pelo sinal UNIX \fIN\fR (ex: 130 para SIGINT/Ctrl+C).
@@ -436,6 +512,7 @@ são individualmente escapados, prevenindo injeções de metacaracteres shell
 \fBBloqueio de Injeção de Opções (-):\fR Parâmetros adicionais que comecem com
 \fB\-\fR são bloqueados preventivamente, a menos que a string \fBactivation\fR
 da configuração termine explicitamente com o marcador de fim de opções \fB\ \-\-\fR.
+A regra vale também para valores de parâmetros sem \fBenum\fR.
 .IP \(bu 3
 \fBLimite Rígido de Entrada:\fR O comprimento máximo da linha de comando é
 limitado a 4096 bytes para prevenir saturação de buffer.
@@ -455,11 +532,22 @@ Arquivo de configuração mestre global.
 .I ~/.aethercli/config.json
 Arquivo de configuração local do usuário.
 .TP
+.I ~/.aethercli/pepper
+Pepper aleatório por usuário (modo \fB0400\fR). Criado pelo \fB\-\-adduser\fR junto com
+um novo \fI~/.aethercli/users.json\fR e usado só para esse arquivo. Nunca é
+sobrescrito. Apagá-lo invalida todas as senhas desse arquivo; permissão aberta ou
+outro dono impedem o login.
+.TP
 .I ~/.aethercli/history
 Arquivo de histórico de comandos da sessão.
 .TP
 .I ~/.aethercli/log/aethercli.log
 Arquivo de log padrão para auditoria de execuções.
+
+.SH SENHA INICIAL
+\fBscripts/generate\-initial\-admin.sh\fR [\fIconfig.json\fR] cria o usuário \fBadmin\fR com
+uma senha aleatória de 24 caracteres e a exibe uma única vez. Recusa rodar se o
+arquivo de usuários já existir. Defina \fBAETHERCLI_BIN\fR se \fBaethercli\fR não estiver no \fB$PATH\fR.
 
 .SH AMBIENTE
 .TP
@@ -470,13 +558,20 @@ Contém o caminho absoluto do arquivo de configuração em uso pelo processo.
 Contém o caminho do diretório onde os scripts de automação são localizados.
 .TP
 .B AETHERCLI_USER
-Identifica o usuário autenticado da sessão.
+Identifica o usuário autenticado para os comandos. Como entrada, só seleciona o
+usuário com a autenticação desligada, ou junto com \fBAETHERCLI_PASSWORD\fR no modo MCP.
+.TP
+.B AETHERCLI_PASSWORD
+Senha do modo MCP. É removida do ambiente na partida e não chega aos comandos.
+.TP
+.B AETHERCLI_PARAM_\fINOME\fR
+Valor de um parâmetro declarado, com o nome em maiúsculas.
 .TP
 .B AETHERCLI_LANG
 Indica o código do idioma carregado pela interface.
 .TP
 .B AETHERCLI_PEPPER
-Chave adicional usada no cálculo criptográfico do PBKDF2 para senhas locais.
+Pepper secreto usado no PBKDF2 das senhas. Tem prioridade sobre \fI~/.aethercli/pepper\fR.
 
 .SH VEJA TAMBÉM
 .BR bash (1),
