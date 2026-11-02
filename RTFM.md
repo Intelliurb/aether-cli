@@ -45,11 +45,18 @@ informado chega como argumento vazio, para não deslocar as posições.
           "effect": "write",
           "timeout_s": 600,
           "max_output_bytes": 65536,
+          "mcp": true,
           "params": [
             { "name": "banco", "type": "string", "required": true, "enum": ["vendas", "estoque", "falho"], "description": "Banco de origem" },
             { "name": "retencao", "type": "integer", "required": true, "minimum": 1, "maximum": 90, "description": "Dias de retenção" },
             { "name": "comprimir", "type": "boolean", "description": "Comprimir o arquivo" }
           ]
+        },
+        {
+          "name": "shell",
+          "short_desc": "Shell livre no host do banco",
+          "activation": "${AETHERCLI_SCRIPTS_DIR}/db-shell.sh",
+          "mcp": false
         }
       ]
     }
@@ -93,9 +100,12 @@ $ echo $?
 
 ## 5. Agente de IA (MCP)
 
-Em um binário compilado com `-DAETHERCLI_ENABLE_MCP=ON`, `--mcp` expõe a mesma
-árvore por JSON-RPC em stdio. A ferramenta se chama `database_backup`, o esquema
-de entrada vem de `params` e `effect` vira as anotações da ferramenta:
+Em um binário compilado com `-DAETHERCLI_ENABLE_MCP=ON`, `--mcp` fala JSON-RPC
+em stdio. Só o comando com `"mcp": true` vira ferramenta. O default é `false`:
+sem o campo, o comando continua no shell e em `-p`, e fica de fora do agente.
+No exemplo, `database backup` é anunciado como `database_backup`; `database shell`
+não entra na lista. O flag é do nó e não passa do pai para o filho. O esquema de
+entrada vem de `params` e `effect` vira as anotações da ferramenta:
 
 ```text
 $ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"database_backup","arguments":{"banco":"estoque","retencao":30}}}' \
@@ -105,7 +115,17 @@ $ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":
 $ printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"database_backup","arguments":{"banco":"vendas","retencao":999}}}' \
     | aethercli -C /opt/ops/config.json --mcp | jq -c '.result|{isError,text:.content[0].text}'
 {"isError":true,"text":"%% Erro: Parâmetro 'retencao' está fora da faixa permitida."}
+
+$ printf '%s\n' '{"jsonrpc":"2.0","id":3,"method":"tools/list"}' \
+    | aethercli -C /opt/ops/config.json --mcp | jq -c '[.result.tools[].name]'
+["database_backup"]
+
+$ printf '%s\n' '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"database_shell"}}' \
+    | aethercli -C /opt/ops/config.json --mcp | jq -c '.error.code'
+-32602
 ```
+
+Um valor de `mcp` que não seja booleano impede a carga do `config.json`.
 
 Com `"require_authentication": true`, o servidor exige `AETHERCLI_USER` e
 `AETHERCLI_PASSWORD` válidos no ambiente e encerra com status 1 caso contrário,
@@ -113,9 +133,8 @@ porque o stdin pertence ao protocolo. A senha padrão do primeiro login (`admin`
 sem `users.json`) não vale aqui.
 
 O MCP nunca serve a árvore de administração: a subárvore `configure` e os comandos
-`admin_only`. Com ou sem autenticação, o agente acessa todo o resto, então use um
-config próprio para ele, como o deste exemplo. A referência completa do MCP está em
-`RTFM-pt.md` e `RTFM-en.md`.
+`admin_only`, mesmo com `"mcp": true`. No restante, o agente só vê o que estiver
+marcado. A referência completa do MCP está em `RTFM-pt.md` e `RTFM-en.md`.
 
 # Usuários e autenticação
 

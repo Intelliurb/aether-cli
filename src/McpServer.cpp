@@ -95,7 +95,9 @@ static void collectTools(
         std::string currentPath = prefixPath.empty() ? cmd.name : prefixPath + " " + cmd.name;
 
         // Ativações internas dependem do shell interativo; aqui iriam para o sh.
-        if (!cmd.activation.empty() && cmd.activation.rfind("internal:", 0) != 0) {
+        // mcp é por nó e não herda: o pai pode ficar de fora e um filho com
+        // "mcp": true ainda é anunciado. Default false omite o comando.
+        if (cmd.mcp && !cmd.activation.empty() && cmd.activation.rfind("internal:", 0) != 0) {
             std::string desc = cmd.short_desc.empty() ? cmd.description : cmd.short_desc;
             if (desc.empty()) {
                 desc = "Execute: " + currentPath;

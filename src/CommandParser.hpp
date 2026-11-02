@@ -42,6 +42,9 @@ struct Command {
     // comando shell (escapados). Default false: comando não aceita argumentos.
     bool allow_args = false;
     bool admin_only = false;
+    // Opt-in do anúncio MCP. false (default): o comando segue no shell e em -p,
+    // mas não entra em tools/list nem em tools/call.
+    bool mcp = false;
     int timeout_s = 0;
     size_t max_output_bytes = 0;
     std::string cwd;
@@ -206,6 +209,11 @@ private:
             if (element.contains("admin_only")) {
                 if (!element["admin_only"].is_boolean()) throw std::runtime_error("Error: 'admin_only' must be a boolean at " + current_context);
                 cmd.admin_only = element["admin_only"].get<bool>();
+            }
+
+            if (element.contains("mcp")) {
+                if (!element["mcp"].is_boolean()) throw std::runtime_error("Error: 'mcp' must be a boolean at " + current_context);
+                cmd.mcp = element["mcp"].get<bool>();
             }
 
             if (element.contains("timeout_s")) {

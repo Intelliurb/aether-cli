@@ -6,7 +6,7 @@ If you start the binary without a configuration file for your application, the c
 
 | | |
 |---|---|
-| Version | 0.7.1 |
+| Version | 0.8.0 |
 | Language | C++17 |
 | Build | CMake 3.14+ |
 | License | [BSD-3-Clause](LICENSE) |

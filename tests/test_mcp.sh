@@ -39,6 +39,7 @@ cat << 'EOF' > "$CONFIG_FILE"
     {
       "name": "echo_test",
       "short_desc": "Echo args back",
+      "mcp": true,
       "activation": "printf 'ECHO:%s\n'",
       "args": "append",
       "syntax": "echo_test <message>"
@@ -46,39 +47,46 @@ cat << 'EOF' > "$CONFIG_FILE"
     {
       "name": "no_args_cmd",
       "short_desc": "Command without arguments",
+      "mcp": true,
       "activation": "echo 'NO_ARGS_OK'",
       "args": "none"
     },
     {
       "name": "fail_exit3",
       "short_desc": "Command that exits with status 3",
+      "mcp": true,
       "activation": "sh -c 'printf \"FAILED_WITH_3\"; exit 3'"
     },
     {
       "name": "signaled_cmd",
       "short_desc": "Command terminated by signal 15",
+      "mcp": true,
       "activation": "sh -c 'kill -15 $$'"
     },
     {
       "name": "timeout_cmd",
       "short_desc": "Command with 2s timeout running sleep 30",
+      "mcp": true,
       "activation": "sleep 30",
       "timeout_s": 2
     },
     {
       "name": "trunc_cmd",
       "short_desc": "Command exceeding max output bytes",
+      "mcp": true,
       "activation": "sh -c 'printf \"012345678901234567890123456789\"'",
       "max_output_bytes": 10
     },
     {
       "name": "stdin_reader",
       "short_desc": "Command that reads from stdin",
+      "mcp": true,
       "activation": "sh -c 'if read -r line; then echo \"GOT:$line\"; else echo \"GOT_EOF\"; fi'"
     },
     {
       "name": "env_cwd_cmd",
       "short_desc": "Command verifying cwd and env",
+      "mcp": true,
       "activation": "sh -c 'printf \"CWD=%s;ENV=%s\n\" \"$(pwd)\" \"$TEST_CUSTOM_VAR\"'",
       "cwd": "/tmp",
       "env": {
@@ -88,6 +96,7 @@ cat << 'EOF' > "$CONFIG_FILE"
     {
       "name": "typed_cmd",
       "short_desc": "Typed test command",
+      "mcp": true,
       "activation": "sh -c 'printf \"ARG1=%s;ENV_MODE=%s;ENV_COUNT=%s;ENV_FLAG=%s\n\" \"$1\" \"$AETHERCLI_PARAM_MODE\" \"$AETHERCLI_PARAM_COUNT\" \"$AETHERCLI_PARAM_FLAG\"' --",
       "effect": "read",
       "idempotent": true,
@@ -119,6 +128,7 @@ cat << 'EOF' > "$CONFIG_FILE"
     {
       "name": "destructive_cmd",
       "short_desc": "Destructive command",
+      "mcp": true,
       "activation": "echo DESTRUCTIVE_OK",
       "effect": "destructive",
       "idempotent": false
@@ -126,6 +136,7 @@ cat << 'EOF' > "$CONFIG_FILE"
     {
       "name": "admin_cmd",
       "short_desc": "Admin only command",
+      "mcp": true,
       "activation": "echo ADMIN_OK",
       "admin_only": true
     }
@@ -291,7 +302,7 @@ printf '%s\n' "$res" | jq -e '.result.resultType == "complete"' >/dev/null
 printf '%s\n' "$res" | jq -e '.result.ttlMs == 300000' >/dev/null
 printf '%s\n' "$res" | jq -e '.result.cacheScope == "public"' >/dev/null
 printf '%s\n' "$res" | jq -e '.result._meta["io.modelcontextprotocol/serverInfo"].name == "aethercli-mcp"' >/dev/null
-printf '%s\n' "$res" | jq -e '.result._meta["io.modelcontextprotocol/serverInfo"].version == "0.7.1"' >/dev/null
+printf '%s\n' "$res" | jq -e '.result._meta["io.modelcontextprotocol/serverInfo"].version == "0.8.0"' >/dev/null
 echo "  [OK] server/discover responde conforme 2026-07-28"
 
 # 2.2 Versão não suportada em _meta retorna UnsupportedProtocolVersionError (-32022)
@@ -308,7 +319,7 @@ req='{"jsonrpc": "2.0", "id": 3, "method": "initialize", "params": {"protocolVer
 res=$(run_mcp_session "$req")
 printf '%s\n' "$res" | jq -e '.result.protocolVersion == "2025-11-25"' >/dev/null
 printf '%s\n' "$res" | jq -e '.result.serverInfo.name == "aethercli-mcp"' >/dev/null
-printf '%s\n' "$res" | jq -e '.result.serverInfo.version == "0.7.1"' >/dev/null
+printf '%s\n' "$res" | jq -e '.result.serverInfo.version == "0.8.0"' >/dev/null
 echo "  [OK] initialize negocia versão legada 2025-11-25"
 
 # 2.4 tools/list ordem determinística e inputSchema correto
@@ -473,19 +484,19 @@ REG_CONFIG="$TMP_DIR/reg_config.json"
 cat << 'CFG' > "$REG_CONFIG"
 {
   "commands": [
-    { "name": "errout", "activation": "echo OUT_TXT; echo ERR_TXT >&2" },
-    { "name": "bigerr", "activation": "head -c 200000 /dev/zero | tr '\\0' x >&2; echo DONE" },
-    { "name": "binary", "activation": "printf '\\377\\376x'" },
-    { "name": "utf8cut", "activation": "printf 'ééééé'", "max_output_bytes": 3 },
-    { "name": "flagged", "activation": "printf 'ARG=%s\\n'", "params": [{ "name": "v", "type": "string" }] },
-    { "name": "flagged_eoo", "activation": "printf 'ARG=%s\\n' --", "params": [{ "name": "v", "type": "string" }] },
-    { "name": "shifted", "activation": "printf '1=[%s] 2=[%s]\\n'", "params": [{ "name": "a", "type": "string" }, { "name": "b", "type": "string" }] },
-    { "name": "reload", "activation": "internal:reload" },
-    { "name": "notified", "activation": "touch notified.mark", "cwd": "marks" },
-    { "name": "closefd", "activation": "exec >&- 2>&-; sleep 15", "timeout_s": 1 },
-    { "name": "survivor", "activation": "(trap '' TERM; sleep 47) & sleep 47", "timeout_s": 1 },
-    { "name": "num", "activation": "echo N=$AETHERCLI_PARAM_N", "params": [{ "name": "n", "type": "integer", "maximum": 10 }] },
-    { "name": "stdin_wait", "activation": "read -r line; echo \"GOT:$line\"" }
+    { "mcp": true, "name": "errout", "activation": "echo OUT_TXT; echo ERR_TXT >&2" },
+    { "mcp": true, "name": "bigerr", "activation": "head -c 200000 /dev/zero | tr '\\0' x >&2; echo DONE" },
+    { "mcp": true, "name": "binary", "activation": "printf '\\377\\376x'" },
+    { "mcp": true, "name": "utf8cut", "activation": "printf 'ééééé'", "max_output_bytes": 3 },
+    { "mcp": true, "name": "flagged", "activation": "printf 'ARG=%s\\n'", "params": [{ "name": "v", "type": "string" }] },
+    { "mcp": true, "name": "flagged_eoo", "activation": "printf 'ARG=%s\\n' --", "params": [{ "name": "v", "type": "string" }] },
+    { "mcp": true, "name": "shifted", "activation": "printf '1=[%s] 2=[%s]\\n'", "params": [{ "name": "a", "type": "string" }, { "name": "b", "type": "string" }] },
+    { "mcp": true, "name": "reload", "activation": "internal:reload" },
+    { "mcp": true, "name": "notified", "activation": "touch notified.mark", "cwd": "marks" },
+    { "mcp": true, "name": "closefd", "activation": "exec >&- 2>&-; sleep 15", "timeout_s": 1 },
+    { "mcp": true, "name": "survivor", "activation": "(trap '' TERM; sleep 47) & sleep 47", "timeout_s": 1 },
+    { "mcp": true, "name": "num", "activation": "echo N=$AETHERCLI_PARAM_N", "params": [{ "name": "n", "type": "integer", "maximum": 10 }] },
+    { "mcp": true, "name": "stdin_wait", "activation": "read -r line; echo \"GOT:$line\"" }
   ]
 }
 CFG
@@ -603,7 +614,7 @@ echo "  [OK] id inválido recusado e ping respondido"
 
 # 3.10f nomes de ferramenta duplicados impedem a partida
 DUP_CONFIG="$TMP_DIR/dup_config.json"
-printf '%s\n' '{"commands":[{"name":"a_b","activation":"true"},{"name":"a","subcommands":[{"name":"b","activation":"true"}]}]}' > "$DUP_CONFIG"
+printf '%s\n' '{"commands":[{"name":"a_b","activation":"true","mcp":true},{"name":"a","subcommands":[{"name":"b","activation":"true","mcp":true}]}]}' > "$DUP_CONFIG"
 set +e
 printf '' | "$BIN" -C "$DUP_CONFIG" --mcp >/dev/null 2>&1
 status=$?
@@ -613,7 +624,7 @@ echo "  [OK] colisão de nomes recusada na partida"
 
 # 3.10g SIGTERM no servidor não deixa o comando em execução órfão
 SLOW_CONFIG="$TMP_DIR/slow_config.json"
-printf '%s\n' '{"commands":[{"name":"slow","activation":"sleep 53"}]}' > "$SLOW_CONFIG"
+printf '%s\n' '{"commands":[{"name":"slow","activation":"sleep 53","mcp":true}]}' > "$SLOW_CONFIG"
 { printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"slow"}}'; sleep 3; } | "$BIN" -C "$SLOW_CONFIG" --mcp >/dev/null 2>&1 &
 sleep 1
 pkill -TERM -f "$SLOW_CONFIG" || true
@@ -628,7 +639,7 @@ echo "  [OK] SIGTERM encaminhado ao comando"
 
 # 3.10h SIGTERM não espera indefinidamente um comando que o ignora
 STUBBORN_CONFIG="$TMP_DIR/stubborn_config.json"
-printf '%s\n' '{"commands":[{"name":"stubborn","activation":"trap \"\" TERM HUP; sleep 59"}]}' > "$STUBBORN_CONFIG"
+printf '%s\n' '{"commands":[{"name":"stubborn","activation":"trap \"\" TERM HUP; sleep 59","mcp":true}]}' > "$STUBBORN_CONFIG"
 { printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"stubborn"}}'; sleep 6; } | "$BIN" -C "$STUBBORN_CONFIG" --mcp >/dev/null 2>&1 &
 sleep 1
 pkill -TERM -f "$STUBBORN_CONFIG" || true
@@ -644,7 +655,7 @@ echo "  [OK] SIGTERM encerra servidor e comando teimoso no prazo de graça"
 
 # 3.10i sinal ignorado na herança (nohup) continua valendo para o comando
 NOHUP_CONFIG="$TMP_DIR/nohup_config.json"
-printf '%s\n' '{"commands":[{"name":"slp","activation":"sleep 2; echo SLP_DONE"}]}' > "$NOHUP_CONFIG"
+printf '%s\n' '{"commands":[{"name":"slp","activation":"sleep 2; echo SLP_DONE","mcp":true}]}' > "$NOHUP_CONFIG"
 output=$(sh -c "trap '' HUP; exec \"$BIN\" -C \"$NOHUP_CONFIG\" -p slp" & p=$!; sleep 1; kill -HUP "$p"; wait "$p")
 printf '%s\n' "$output" | grep -q SLP_DONE
 res=$( { printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"slp"}}'; sleep 1; pkill -HUP -f "$NOHUP_CONFIG" || true; sleep 2; } | sh -c "trap '' HUP; exec \"$BIN\" -C \"$NOHUP_CONFIG\" --mcp")
@@ -655,21 +666,24 @@ echo "  [OK] SIGHUP ignorado na herança (nohup) respeitado"
 ADMIN_TREE_CONFIG="$TMP_DIR/admin_tree.json"
 cat << 'CFG' > "$ADMIN_TREE_CONFIG"
 { "commands": [
-    { "name": "configure", "subcommands": [
-        { "name": "terminal", "activation": "internal:config_mode", "subcommands": [
-            { "name": "whoami", "activation": "echo CONFIGURE_RAN" }
+    { "name": "configure", "mcp": false, "subcommands": [
+        { "name": "terminal", "activation": "internal:config_mode", "mcp": true, "subcommands": [
+            { "name": "whoami", "activation": "echo CONFIGURE_RAN", "mcp": true }
         ] }
     ] },
-    { "name": "ops", "admin_only": true, "subcommands": [
-        { "name": "child", "activation": "echo CHILD_RAN" }
+    { "name": "ops", "admin_only": true, "mcp": true, "subcommands": [
+        { "name": "child", "activation": "echo CHILD_RAN", "mcp": true }
     ] },
-    { "name": "app", "subcommands": [
-        { "name": "configure", "activation": "echo APP_CONFIGURE_OK" }
+    { "name": "app", "mcp": false, "subcommands": [
+        { "name": "configure", "activation": "echo APP_CONFIGURE_OK", "mcp": true },
+        { "name": "quiet", "activation": "echo QUIET_RAN", "mcp": false }
     ] }
 ] }
 CFG
 res=$(printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n' | AETHERCLI_USER=admin "$BIN" -C "$ADMIN_TREE_CONFIG" --mcp)
 printf '%s\n' "$res" | jq -e '[.result.tools[].name] == ["app_configure"]' >/dev/null
+res=$(printf '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"app_quiet"}}\n' | "$BIN" -C "$ADMIN_TREE_CONFIG" --mcp)
+printf '%s\n' "$res" | jq -e '.error.code == -32602' >/dev/null
 for tool in configure_terminal_whoami ops_child; do
     res=$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"%s"}}\n' "$tool" | AETHERCLI_USER=admin "$BIN" -C "$ADMIN_TREE_CONFIG" --mcp)
     printf '%s\n' "$res" | jq -e '.error.code == -32602' >/dev/null
@@ -677,7 +691,7 @@ done
 # A árvore padrão não expõe nenhuma ferramenta de configure.
 DEFAULT_CONFIG="$SCRIPT_DIR/etc/config.json"
 res=$(printf '{"jsonrpc":"2.0","id":3,"method":"tools/list"}\n' | "$BIN" -C "$DEFAULT_CONFIG" --mcp)
-printf '%s\n' "$res" | jq -e '([.result.tools[].name | select(startswith("configure"))] | length) == 0 and (.result.tools | length) > 0' >/dev/null
+printf '%s\n' "$res" | jq -e '([.result.tools[].name | select(startswith("configure"))] | length) == 0 and (.result.tools | length) == 0' >/dev/null
 echo "  [OK] árvore de administração fora do MCP"
 
 # 3.11 string com NUL é recusada
@@ -685,12 +699,36 @@ res=$(reg_session "$(reg_call flagged '{"v":"a\u0000b"}')")
 printf '%s\n' "$res" | jq -e '.result.isError == true' >/dev/null
 echo "  [OK] NUL em parâmetro recusado"
 
+
+# 3.10k mcp default false: só o nó com "mcp": true é anunciado; o pai não herda
+VIS_CONFIG="$TMP_DIR/vis_config.json"
+cat << 'CFG' > "$VIS_CONFIG"
+{ "commands": [
+    { "name": "parent", "mcp": false, "subcommands": [
+        { "name": "shown", "activation": "echo SHOWN", "mcp": true },
+        { "name": "omitted", "activation": "echo OMITTED" }
+    ] },
+    { "name": "off", "activation": "echo OFF", "mcp": false },
+    { "name": "on", "activation": "echo ON", "mcp": true }
+] }
+CFG
+res=$(printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n' | "$BIN" -C "$VIS_CONFIG" --mcp)
+printf '%s\n' "$res" | jq -e '[.result.tools[].name] == ["parent_shown", "on"]' >/dev/null
+for tool in parent_omitted off; do
+    res=$(printf '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"%s"}}\n' "$tool" | "$BIN" -C "$VIS_CONFIG" --mcp)
+    printf '%s\n' "$res" | jq -e '.error.code == -32602' >/dev/null
+done
+res=$(printf '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"on"}}\n' | "$BIN" -C "$VIS_CONFIG" --mcp)
+printf '%s\n' "$res" | jq -e '.result.isError == false and (.result.content[0].text | contains("ON"))' >/dev/null
+echo "  [OK] visibilidade MCP opt-in por comando, sem herança"
+
 echo "=== Testando autenticação do servidor MCP ==="
 AUTH_CONFIG="$TMP_DIR/auth_config.json"
 cat << 'CFG' > "$AUTH_CONFIG"
 { "require_authentication": true, "commands": [
-    { "name": "plain", "activation": "echo PLAIN_RAN; echo \"PW=${AETHERCLI_PASSWORD:-}\"" },
-    { "name": "danger", "activation": "echo DANGER_RAN", "admin_only": true }
+    { "name": "plain", "activation": "echo PLAIN_RAN; echo \"PW=${AETHERCLI_PASSWORD:-}\"", "mcp": true },
+    { "name": "danger", "activation": "echo DANGER_RAN", "admin_only": true, "mcp": true },
+    { "name": "secret", "activation": "echo SECRET_RAN", "mcp": false }
 ] }
 CFG
 auth_session() {
@@ -733,6 +771,9 @@ res=$(AETHERCLI_USER=operador AETHERCLI_PASSWORD=senha12345 auth_session plain)
 printf '%s\n' "$res" | jq -e '.result.content[0].text | contains("PLAIN_RAN") and contains("PW=\n")' >/dev/null
 res=$(AETHERCLI_USER=operador AETHERCLI_PASSWORD=senha12345 auth_session danger)
 printf '%s\n' "$res" | jq -e '.error.code == -32602' >/dev/null
+res=$(AETHERCLI_USER=operador AETHERCLI_PASSWORD=senha12345 auth_session secret)
+printf '%s\n' "$res" | jq -e '.error.code == -32602' >/dev/null
+echo "  [OK] comando com mcp false permanece oculto com autenticação"
 echo "  [OK] credencial válida autentica sem vazar a senha"
 
 echo "=== Todos os testes de conformidade MCP e -p passaram com sucesso! ==="

@@ -26,7 +26,7 @@
   "//_8": "Idioma do shell (en, pt, etc). Precisa ter o arquivo lang_<idioma>.json correspondente.",
   "language": "en",
 
-  "//_9": "Árvore de comandos. Cada nó pode ter 'name', 'abbrev', 'short_desc', 'activation', 'syntax', 'args' e 'subcommands'.",
+  "//_9": "Árvore de comandos. Cada nó pode ter 'name', 'abbrev', 'short_desc', 'activation', 'syntax', 'args', 'mcp' e 'subcommands'. 'mcp' (boolean, default false) anuncia o comando no servidor MCP só quando true.",
   "commands": [
     {
       "name": "exemplo",
@@ -35,7 +35,8 @@
       "description": "Uma descrição mais longa se necessário.",
       "activation": "echo 'olá'",
       "syntax": "exemplo",
-      "args": "append"
+      "args": "append",
+      "mcp": false
     }
   ]
 }

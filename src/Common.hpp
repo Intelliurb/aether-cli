@@ -9,6 +9,6 @@ namespace cli {
 #ifdef AETHERCLI_VERSION
 inline constexpr const char* VERSION = AETHERCLI_VERSION;
 #else
-inline constexpr const char* VERSION = "0.7.1";
+inline constexpr const char* VERSION = "0.8.0";
 #endif
 } // namespace cli

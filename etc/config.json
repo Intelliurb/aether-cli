@@ -10,33 +10,39 @@
           "name": "disk",
           "short_desc": "Uso dos sistemas de arquivos",
           "activation": "${AETHERCLI_SCRIPTS_DIR}/system-disk.sh",
-          "syntax": "system disk"
+          "syntax": "system disk",
+          "mcp": false
         },
         {
           "name": "memory",
           "short_desc": "Uso de memória",
           "activation": "${AETHERCLI_SCRIPTS_DIR}/system-memory.sh",
-          "syntax": "system memory"
+          "syntax": "system memory",
+          "mcp": false
         },
         {
           "name": "cpu",
           "short_desc": "Uso de CPU",
           "activation": "${AETHERCLI_SCRIPTS_DIR}/system-cpu.sh",
-          "syntax": "system cpu"
+          "syntax": "system cpu",
+          "mcp": false
         },
         {
           "name": "version",
           "short_desc": "Versão do sistema",
           "activation": "${AETHERCLI_SCRIPTS_DIR}/system-version.sh",
-          "syntax": "system version"
+          "syntax": "system version",
+          "mcp": false
         },
         {
           "name": "time",
           "short_desc": "Mostrar a hora (atualizado)",
           "activation": "date",
-          "syntax": "system time"
+          "syntax": "system time",
+          "mcp": false
         }
-      ]
+      ],
+      "mcp": false
     },
     {
       "name": "network",
@@ -52,23 +58,28 @@
               "name": "statistics",
               "short_desc": "Estatísticas de tráfego das interfaces",
               "activation": "${AETHERCLI_SCRIPTS_DIR}/network-interface-statistics.sh",
-              "syntax": "network interface statistics"
+              "syntax": "network interface statistics",
+              "mcp": false
             }
-          ]
+          ],
+          "mcp": false
         },
         {
           "name": "route",
           "short_desc": "Tabela de roteamento",
           "activation": "${AETHERCLI_SCRIPTS_DIR}/network-route.sh",
-          "syntax": "network route"
+          "syntax": "network route",
+          "mcp": false
         },
         {
           "name": "listening",
           "short_desc": "Portas TCP e UDP em escuta",
           "activation": "${AETHERCLI_SCRIPTS_DIR}/network-listening.sh",
-          "syntax": "network listening"
+          "syntax": "network listening",
+          "mcp": false
         }
-      ]
+      ],
+      "mcp": false
     },
     {
       "name": "file",
@@ -79,16 +90,19 @@
           "short_desc": "Listar arquivos",
           "activation": "ls -la",
           "syntax": "file list [path]",
-          "args": "append"
+          "args": "append",
+          "mcp": false
         },
         {
           "name": "find",
           "short_desc": "Localizar arquivos por padrão",
           "activation": "${AETHERCLI_SCRIPTS_DIR}/file-find.sh",
           "syntax": "file find <pattern> [directory]",
-          "args": "append"
+          "args": "append",
+          "mcp": false
         }
-      ]
+      ],
+      "mcp": false
     },
     {
       "name": "macro",
@@ -99,9 +113,11 @@
           "short_desc": "Executar arquivo .macro",
           "activation": "internal:run_macro",
           "syntax": "macro run <arquivo.macro>",
-          "args": "append"
+          "args": "append",
+          "mcp": false
         }
-      ]
+      ],
+      "mcp": false
     },
     {
       "name": "settings",
@@ -111,15 +127,18 @@
           "name": "show",
           "short_desc": "Exibe a configuração do app",
           "activation": "${AETHERCLI_SCRIPTS_DIR}/settings-show.sh",
-          "syntax": "settings show"
+          "syntax": "settings show",
+          "mcp": false
         },
         {
           "name": "tree",
           "short_desc": "Exibe a árvore de comandos",
           "activation": "${AETHERCLI_SCRIPTS_DIR}/settings-tree.sh",
-          "syntax": "settings tree"
+          "syntax": "settings tree",
+          "mcp": false
         }
-      ]
+      ],
+      "mcp": false
     },
     {
       "name": "configure",
@@ -140,21 +159,25 @@
                   "name": "macros",
                   "short_desc": "Listar arquivos .macro disponíveis",
                   "activation": "internal:list_macros",
-                  "syntax": "list macros"
+                  "syntax": "list macros",
+                  "mcp": false
                 },
                 {
                   "name": "users",
                   "short_desc": "Listar usuários configurados",
                   "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-list-users.sh",
-                  "syntax": "list users"
+                  "syntax": "list users",
+                  "mcp": false
                 },
                 {
                   "name": "commands",
                   "short_desc": "Listar comandos dinâmicos",
                   "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-list-commands.sh",
-                  "syntax": "list commands"
+                  "syntax": "list commands",
+                  "mcp": false
                 }
-              ]
+              ],
+              "mcp": false
             },
             {
               "name": "add",
@@ -166,7 +189,8 @@
                   "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-add-user.sh",
                   "syntax": "add user <username>",
                   "args": "append",
-                  "admin_only": true
+                  "admin_only": true,
+                  "mcp": false
                 },
                 {
                   "name": "command",
@@ -174,9 +198,11 @@
                   "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-add-command.sh",
                   "syntax": "add command <parent_path> <name> <short_desc> [activation] [syntax]",
                   "args": "append",
-                  "admin_only": true
+                  "admin_only": true,
+                  "mcp": false
                 }
-              ]
+              ],
+              "mcp": false
             },
             {
               "name": "rm",
@@ -188,7 +214,8 @@
                   "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-rm-user.sh",
                   "syntax": "rm user <username>",
                   "args": "append",
-                  "admin_only": true
+                  "admin_only": true,
+                  "mcp": false
                 },
                 {
                   "name": "command",
@@ -196,9 +223,11 @@
                   "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-rm-command.sh",
                   "syntax": "rm command <command_path>",
                   "args": "append",
-                  "admin_only": true
+                  "admin_only": true,
+                  "mcp": false
                 }
-              ]
+              ],
+              "mcp": false
             },
             {
               "name": "set",
@@ -210,7 +239,8 @@
                   "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-set-statusbar.sh",
                   "syntax": "set statusbar <on|off>",
                   "args": "append",
-                  "admin_only": true
+                  "admin_only": true,
+                  "mcp": false
                 },
                 {
                   "name": "language",
@@ -218,7 +248,8 @@
                   "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-set-language.sh",
                   "syntax": "set language <english-us|portuguese-brasil>",
                   "args": "append",
-                  "admin_only": true
+                  "admin_only": true,
+                  "mcp": false
                 },
                 {
                   "name": "authentication",
@@ -226,9 +257,11 @@
                   "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-set-authentication.sh",
                   "syntax": "set authentication <on|off>",
                   "args": "append",
-                  "admin_only": true
+                  "admin_only": true,
+                  "mcp": false
                 }
-              ]
+              ],
+              "mcp": false
             },
             {
               "name": "passwd",
@@ -239,9 +272,11 @@
                   "short_desc": "Alterar senha de um usuário existente",
                   "activation": "${AETHERCLI_SCRIPTS_DIR}/configure-terminal-passwd-user.sh",
                   "syntax": "passwd user <username>",
-                  "args": "append"
+                  "args": "append",
+                  "mcp": false
                 }
-              ]
+              ],
+              "mcp": false
             },
             {
               "name": "show",
@@ -251,19 +286,24 @@
                   "name": "whoami",
                   "short_desc": "Exibe o usuario atual",
                   "activation": "echo $AETHERCLI_USER",
-                  "syntax": "show whoami"
+                  "syntax": "show whoami",
+                  "mcp": false
                 }
-              ]
+              ],
+              "mcp": false
             },
             {
               "name": "reload",
               "short_desc": "Recarrega o arquivo de configuração e o idioma na memória",
               "activation": "internal:reload",
-              "syntax": "reload"
+              "syntax": "reload",
+              "mcp": false
             }
-          ]
+          ],
+          "mcp": false
         }
-      ]
+      ],
+      "mcp": false
     }
   ]
 }

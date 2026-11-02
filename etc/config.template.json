@@ -38,6 +38,7 @@
   "//": "  - syntax:      Full syntax description shown in help",
   "//": "  - args:        'append' to pass trailing arguments to the shell command",
   "//": "  - admin_only:  true to restrict execution strictly to the 'admin' user",
+  "//": "  - mcp:         true to announce this command as an MCP tool (default: false)",
   "//": "  - effect:      'read', 'write' (default), or 'destructive'",
   "//": "  - idempotent:  true if calling with same args has no additional effect (default: false)",
   "//": "  - open_world:  true if command interacts with external environment (default: true)",
@@ -52,10 +53,12 @@
     {
       "name": "system",
       "short_desc": "Display system information",
+      "mcp": false,
       "subcommands": [
         {
           "name": "version",
           "short_desc": "System version",
+          "mcp": false,
           "activation": "uname -a",
           "syntax": "system version"
         }

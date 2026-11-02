@@ -214,6 +214,7 @@ TEST_CASE("parseConfig: params tipados e validacao (PAR-1) e effect (MCP-4)") {
     REQUIRE(cmd.effect == "destructive");
     REQUIRE(cmd.idempotent == true);
     REQUIRE(cmd.open_world == false);
+    REQUIRE(cmd.mcp == false);
     REQUIRE(cmd.params.size() == 3);
 
     REQUIRE(cmd.params[0].name == "env");
@@ -268,6 +269,24 @@ TEST_CASE("parseConfig: params tipados e validacao (PAR-1) e effect (MCP-4)") {
     // effect inválido
     TempConfig cfg_bad_effect(R"({"commands": [{"name": "x", "effect": "unknown"}]})");
     REQUIRE_THROWS(CommandParser::parseConfig(cfg_bad_effect.path()));
+
+    TempConfig cfg_mcp(R"({
+        "commands": [
+            {"name": "shown", "mcp": true, "subcommands": [
+                {"name": "hidden_child"},
+                {"name": "shown_child", "mcp": true}
+            ]},
+            {"name": "hidden", "mcp": false}
+        ]
+    })");
+    auto mcp_cfg = CommandParser::parseConfig(cfg_mcp.path());
+    REQUIRE(mcp_cfg.commands[0].mcp == true);
+    REQUIRE(mcp_cfg.commands[0].subcommands[0].mcp == false);
+    REQUIRE(mcp_cfg.commands[0].subcommands[1].mcp == true);
+    REQUIRE(mcp_cfg.commands[1].mcp == false);
+
+    TempConfig cfg_bad_mcp(R"({"commands": [{"name": "x", "mcp": "true"}]})");
+    REQUIRE_THROWS(CommandParser::parseConfig(cfg_bad_mcp.path()));
 }
 
 using namespace cli::parser;
