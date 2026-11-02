@@ -234,6 +234,15 @@ OS command line, external script, or reserved engine directive
 .B "admin_only" \fR(boolean, optional)
 If \fBtrue\fR, restricts the command and everything below it to the authenticated "admin" user. Never served in MCP mode.
 .TP
+.B "mcp" \fR(boolean, default false)
+If \fBtrue\fR, announces this command as an MCP tool. Omitted or \fBfalse\fR
+keeps the command in the interactive shell and in \fB\-p\fR, and leaves it out
+of \fBtools/list\fR. Calling it with \fBtools/call\fR returns JSON-RPC error
+\-32602. The flag belongs to the node and is not inherited by subcommands. A
+value that is not a boolean prevents the configuration from loading. The
+top-level \fBconfigure\fR subtree and \fBadmin_only\fR commands stay hidden
+even when this field is \fBtrue\fR.
+.TP
 .B "args" \fR(string, default "none")
 When set to \fB"append"\fR, extra arguments typed by the user are sanitized
 and forwarded to the activation command. When set to \fB"none"\fR, unconfigured
@@ -418,6 +427,7 @@ retention of 1 to 90 days. In \fIconfig.json\fR:
       "name": "backup",
       "activation": "${AETHERCLI_SCRIPTS_DIR}/backup.sh",
       "timeout_s": 600,
+      "mcp": true,
       "params": [
         { "name": "bank", "type": "string", "required": true,
           "enum": ["sales", "stock"] },
@@ -438,10 +448,14 @@ command is the tool \fBdatabase_backup\fR with a generated input schema.
 \fBaethercli \-\-mcp\fR reads one JSON-RPC message per line from standard input.
 It supports protocol revisions 2026-07-28 (per-request version in
 \fBparams._meta\fR, \fBserver/discover\fR) and 2025-11-25 (\fBinitialize\fR).
-Commands with an activation become tools named by joining the path with
-underscores; \fBinternal:\fR activations are not exposed. The administration tree
-(the top-level \fBconfigure\fR subtree and every \fBadmin_only\fR command, with its
-subcommands) is never served, for any user, including \fBadmin\fR. Each command gets \fI/dev/null\fR as standard input.
+Only a command with \fBmcp\fR set to \fBtrue\fR and a non-empty activation becomes
+a tool. The name joins the path with underscores. The default is \fBfalse\fR:
+without the field, the command stays available in the shell and in \fB\-p\fR and
+is not announced. \fBinternal:\fR activations are not exposed. The administration
+tree (the top-level \fBconfigure\fR subtree and every \fBadmin_only\fR command,
+with its subcommands) is never served, for any user, including \fBadmin\fR, even
+when \fBmcp\fR is \fBtrue\fR. A hidden name passed to \fBtools/call\fR returns
+error \-32602. Each command gets \fI/dev/null\fR as standard input.
 .PP
 With \fBrequire_authentication\fR, the server needs valid \fBAETHERCLI_USER\fR and
 \fBAETHERCLI_PASSWORD\fR variables and otherwise exits with status 1. The default

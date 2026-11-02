@@ -10,6 +10,8 @@ aethercli \- interface CLI para automação de sistemas e despacho de comandos
 .br
 \fBaethercli\fR \fB\-p\fR "\fIcomando\fR" [\fB\-C\fR \fIconfig_file\fR] [\fB\-l\fR \fIlang\fR] [\fB\-\-log\fR [\fIpath\fR]]
 .br
+\fBaethercli\fR \fB\-\-mcp\fR [\fB\-C\fR \fIconfig_file\fR] [\fB\-l\fR \fIlang\fR] [\fB\-\-log\fR [\fIpath\fR]]
+.br
 \fBaethercli\fR \fB\-\-adduser\fR \fInome\fR [\fB\-C\fR \fIconfig_file\fR]
 .br
 \fBaethercli\fR \fB\-h\fR | \fB\-\-help\fR
@@ -243,6 +245,15 @@ um binário do sistema, um script ou uma chamada interna reservada
 .B "admin_only" \fR(booleano, opcional)
 Se \fBtrue\fR, restringe o comando e tudo abaixo dele ao usuário autenticado "admin". Nunca é servido no modo MCP.
 .TP
+.B "mcp" \fR(booleano, padrão false)
+Se \fBtrue\fR, anuncia o comando como ferramenta MCP. Omitido ou \fBfalse\fR,
+o comando continua no shell interativo e em \fB\-p\fR, e fica fora de
+\fBtools/list\fR. Chamá-lo com \fBtools/call\fR devolve o erro JSON-RPC
+\-32602. O flag é do nó e não passa para os subcomandos. Um valor que não
+seja booleano impede a carga da configuração. A subárvore \fBconfigure\fR da
+raiz e os comandos \fBadmin_only\fR continuam ocultos mesmo com este campo
+em \fBtrue\fR.
+.TP
 .B "args" \fR(string, padrão "none")
 Quando definido como \fB"append"\fR, tokens sobressalentes digitados após o
 comando são higienizados e anexados à execução. Se \fB"none"\fR, argumentos
@@ -429,6 +440,7 @@ com retenção de 1 a 90 dias. No \fIconfig.json\fR:
       "name": "backup",
       "activation": "${AETHERCLI_SCRIPTS_DIR}/backup.sh",
       "timeout_s": 600,
+      "mcp": true,
       "params": [
         { "name": "banco", "type": "string", "required": true,
           "enum": ["vendas", "estoque"] },
@@ -448,12 +460,15 @@ comando é a ferramenta \fBdatabase_backup\fR, com esquema de entrada gerado.
 .SH SERVIDOR MCP
 \fBaethercli \-\-mcp\fR lê uma mensagem JSON-RPC por linha da entrada padrão.
 Atende às revisões 2026-07-28 (versão por requisição em \fBparams._meta\fR,
-\fBserver/discover\fR) e 2025-11-25 (\fBinitialize\fR). Comandos com ativação viram
-ferramentas nomeadas pelo caminho unido com sublinhados; ativações \fBinternal:\fR
-não são expostas. A árvore de administração (a subárvore \fBconfigure\fR da raiz e
-todo comando \fBadmin_only\fR, com seus subcomandos) nunca é servida, para nenhum
-usuário, inclusive \fBadmin\fR. Cada comando
-recebe \fI/dev/null\fR como entrada padrão.
+\fBserver/discover\fR) e 2025-11-25 (\fBinitialize\fR). Só um comando com
+\fBmcp\fR em \fBtrue\fR e ativação não vazia vira ferramenta. O nome une o
+caminho com sublinhados. O padrão é \fBfalse\fR: sem o campo, o comando segue
+no shell e em \fB\-p\fR e não é anunciado. Ativações \fBinternal:\fR não são
+expostas. A árvore de administração (a subárvore \fBconfigure\fR da raiz e todo
+comando \fBadmin_only\fR, com seus subcomandos) nunca é servida, para nenhum
+usuário, inclusive \fBadmin\fR, mesmo com \fBmcp\fR em \fBtrue\fR. Um nome oculto
+em \fBtools/call\fR devolve o erro \-32602. Cada comando recebe \fI/dev/null\fR
+como entrada padrão.
 .PP
 Com \fBrequire_authentication\fR, o servidor exige \fBAETHERCLI_USER\fR e
 \fBAETHERCLI_PASSWORD\fR válidos e, caso contrário, termina com status 1. A senha
